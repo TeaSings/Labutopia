@@ -139,22 +139,28 @@ class MobilePickController(BaseController):
         if not self.waypoints_set and state.get('waypoints') is not None:
             self.ridgebase_controller.set_waypoints(state['waypoints'], self.final_nav_angle)
             self.waypoints_set = True
+            
+            # Save navigation start and end positions as task properties
+            if hasattr(self, 'data_collector'):
+                task_properties = {
+                    "start_position": state['current_pose'][:3].tolist(),  # [x, y, theta]
+                    "end_position": state['waypoints'][-1][:3],  # Last waypoint [x, y, theta]
+                    "object_name": state.get('object_name', 'unknown'),
+                    "object_position": state.get('object_position', [0, 0, 0]).tolist() if state.get('object_position') is not None else [0, 0, 0]
+                }
+                self.data_collector.set_task_properties(task_properties)
         
         current_pose = state['current_pose']
         action, done = self.ridgebase_controller.get_action(current_pose)
         
         # Collect navigation data
         if 'camera_data' in state and not done:
-            # For navigation, only record base movement (first 3 joints: x, y, theta)
-            nav_joint_positions = np.array([
-                current_pose[0],
-                current_pose[1],
-                current_pose[2]
-            ])
+            # Get current joint positions from robot
+            current_joint_positions = self.robot.get_joint_positions()[:-2]  # Exclude gripper joints
             
             self.data_collector.cache_step(
                 camera_images=state['camera_data'],
-                joint_angles=nav_joint_positions,
+                joint_angles=current_joint_positions,
                 language_instruction="Navigate to the pick location"
             )
         
@@ -163,15 +169,7 @@ class MobilePickController(BaseController):
             print("Navigation completed, starting pick task!")
             self.navigation_done = True
             self.pick_started = True
-            
-            # Save navigation trajectory data
-            if hasattr(self, 'data_collector'):
-                final_nav_positions = np.array([
-                    current_pose[0],
-                    current_pose[1],
-                    current_pose[2]
-                ])
-                self.data_collector.write_cached_data(final_nav_positions)
+            # Navigation data is cached, will be saved together with pick data at episode end
         
         return action, False, False
     
@@ -213,9 +211,12 @@ class MobilePickController(BaseController):
         
         # Collect pick data (full joint positions including arm)
         if 'camera_data' in state and not self.pick_controller.is_done():
+            # Get current joint positions from robot
+            current_joint_positions = self.robot.get_joint_positions()[:-2]  # Exclude gripper joints
+            
             self.data_collector.cache_step(
                 camera_images=state['camera_data'],
-                joint_angles=state['joint_positions'][:-2],  # Exclude gripper joints
+                joint_angles=current_joint_positions,
                 language_instruction=self.get_language_instruction()
             )
         
@@ -236,9 +237,10 @@ class MobilePickController(BaseController):
             
             if pick_success:
                 print("Pick successful - object lifted!")
-                # Save pick trajectory data
+                # Save complete episode trajectory data (navigation + pick)
                 if hasattr(self, 'data_collector'):
-                    self.data_collector.write_cached_data(state['joint_positions'][:-2])
+                    final_joint_positions = self.robot.get_joint_positions()[:-2]  # Exclude gripper joints
+                    self.data_collector.write_cached_data(final_joint_positions)
             else:
                 print("Pick failed - object not lifted enough")
                 self.data_collector.clear_cache()

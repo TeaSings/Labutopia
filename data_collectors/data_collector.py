@@ -10,7 +10,8 @@ from glob import glob
 
 def _write_episode_data(episode_path: str, episode_name: str, 
                        camera_data: dict, agent_pose_data: np.ndarray, 
-                       actions_data: np.ndarray, language_instruction: Optional[str] = None, compression=None):
+                       actions_data: np.ndarray, task_properties: dict = None,
+                       language_instruction: Optional[str] = None, compression=None):
     """Helper function to write episode data in a separate process
     
     Args:
@@ -19,6 +20,7 @@ def _write_episode_data(episode_path: str, episode_name: str,
         camera_data: Dict of camera name to image data {name: [T, H, W, 3]}
         agent_pose_data: Robot joint angles [T, num_joints]
         actions_data: Robot actions [T, num_joints]
+        task_properties: Task unique properties dictionary
         language_instruction: Language instruction for the task
         compression: Compression method for image data, None for no compression
     """
@@ -63,6 +65,15 @@ def _write_episode_data(episode_path: str, episode_name: str,
                 dtype=h5py.special_dtype(vlen=str)
             )
         
+        # Store task properties (as JSON string)
+        if task_properties:
+            task_properties_json = json.dumps(task_properties, ensure_ascii=False)
+            h5_file.create_dataset(
+                "task_properties",
+                data=task_properties_json,
+                dtype=h5py.special_dtype(vlen=str)
+            )
+        
         print(f"Finished writing episode {episode_name}")
 
 class DataCollector:
@@ -102,10 +113,20 @@ class DataCollector:
         self.temp_agent_pose = []
         self.temp_actions = []
         self.temp_language_instruction = None
+        self.temp_task_properties = {}
         
         # Initialize process pool and tracking variables
         self.process_pool = ProcessPoolExecutor(max_workers=max_workers)
         self.pending_futures: List[Future] = []
+    
+    def set_task_properties(self, properties: dict):
+        """Set the unique task properties for the current episode
+        
+        Args:
+            properties: Task properties dictionary, content depends on the specific task
+                       For example, navigation task: {"start_position": [x, y, z], "end_position": [x, y, z]}
+        """
+        self.temp_task_properties = properties
         
     def cache_step(self, camera_images: dict, joint_angles: np.ndarray, language_instruction: Optional[str] = None):
         """Cache each step's data in temporary lists
@@ -152,6 +173,7 @@ class DataCollector:
             camera_data,
             agent_pose_data,
             actions_data,
+            self.temp_task_properties,
             self.temp_language_instruction,
             self.compression
         )
@@ -160,7 +182,8 @@ class DataCollector:
         info = {
             "episode_index": self.episode_count,
             "tasks": [self.task_instructions] if self.task_instructions else [],
-            "length": len(self.temp_agent_pose)
+            "length": len(self.temp_agent_pose),
+            "task_properties": self.temp_task_properties
         }
         
         with open(self.episode_file_path, "a", encoding="utf-8") as f:
@@ -172,6 +195,7 @@ class DataCollector:
         self.temp_agent_pose = []
         self.temp_actions = []
         self.temp_language_instruction = None
+        self.temp_task_properties = {}
         
         # Increment episode count
         self.episode_count += 1
@@ -183,6 +207,7 @@ class DataCollector:
         self.temp_agent_pose = []
         self.temp_actions = []
         self.temp_language_instruction = None
+        self.temp_task_properties = {}
         self.task_instructions = None
         
     def close(self, merge=False):

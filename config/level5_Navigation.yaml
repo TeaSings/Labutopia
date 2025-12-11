@@ -51,7 +51,7 @@ robot:
   position: [0.0, 0.0, 0.0]
 
 collector:
-  type: "default"
+  type: "action_state"
   compression: gzip
 
 hydra:

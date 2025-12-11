@@ -22,7 +22,11 @@ def parse_args():
 args = parse_args()
 
 # Set up simulation app based on arguments
-simulation_config = {"headless": args.headless}
+simulation_config = {
+    "headless": False,
+    "extra_args": ["--/rtx/raytracing/fractionalCutoutOpacity=true"],
+}
+
 simulation_app = SimulationApp(simulation_config)
 
 import hydra
