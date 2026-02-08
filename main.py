@@ -127,6 +127,7 @@ def main():
             if action is not None:
                 robot.get_articulation_controller().apply_action(action)
             if done:
+                task_controller.print_failure_reason()
                 task.on_task_complete(is_success)
                 continue
             

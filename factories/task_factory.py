@@ -1,6 +1,6 @@
 from typing import Dict, Type
 from tasks.base_task import BaseTask
-from tasks.open_task import OpenTask
+from tasks.open_close_task import OpenCloseTask
 from tasks.pick_task import PickTask
 from tasks.place_task import PlaceTask
 from tasks.press_task import PressTask
@@ -34,7 +34,7 @@ register_task("place", PlaceTask)
 register_task("press", PressTask)
 register_task("shake", ShakeTask)
 register_task("stir", StirTask)
-register_task("openclose", OpenTask)
+register_task("openclose", OpenCloseTask)
 register_task("device_operate", DeviceOperateTask)
 register_task("pickpour", PickPourTask)
 register_task("pickplace", PickPlaceTask)

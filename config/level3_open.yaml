@@ -6,10 +6,12 @@ controller_type: "open"
 mode: "collect"
 usd_path: "assets/chemistry_lab/lab_001/lab_001.usd"
 
-max_episodes: 100
+max_episodes: 10
 
 infer:
-  type: "local"
+  type: "replay" # "local", "remote", "replay"
+  replay_data_path: "/home/ubuntu/Documents/LabUtopia/outputs/collect/2026.02.08/22.08.04_Level3_open/dataset/episode_0001.h5"
+  episode_index: 0 # replay mode only
   obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
   policy_model_path: ""
   policy_config_path: ""
@@ -24,22 +26,26 @@ infer:
 
 task:
   max_steps: 1000
+  operate_type: "door" # "door" or "drawer"
   obj_paths:
     - path: "/World/DryingBox_01"
       position_range:
         x: [0.72, 0.77]
         y: [0.0, 0.15]
         z: [0.78, 0.78]
+      close_gripper_distance: 0.015
     - path: "/World/DryingBox_02"
       position_range:
         x: [0.72, 0.77]
         y: [-0.05, 0.010]
         z: [0.78, 0.78]
+      close_gripper_distance: 0.02
     - path: "/World/MuffleFurnace"
       position_range:
         x: [0.65, 0.70]
         y: [-0.05, 0.010]
         z: [0.78, 0.78]
+      close_gripper_distance: 0.02
   material_paths:
     - path: "/World/table/surface"
       materials:

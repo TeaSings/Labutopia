@@ -234,7 +234,7 @@ class OpenController(BaseController):
             target_joint_positions = ArticulationAction(joint_positions=target_joint_positions)
         elif self._event == 6:
             handle_position = self.trans_interp.copy()
-            handle_position[0] -= 0.04
+            handle_position[0] -= 0.06
             if revolute_joint_position[1] > self.start_position[1]:
                 handle_position[1] += 0.04
             else:

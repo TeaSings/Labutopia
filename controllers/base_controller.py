@@ -36,6 +36,7 @@ class BaseController(ABC):
         self.REQUIRED_SUCCESS_STEPS = 60
         self.check_success_counter = 0
         self.rmp_controller = None
+        self._last_failure_reason = ""
         
         self.rmp_controller = FrankaRMPFlowController(
             name="target_follower_controller",
@@ -128,6 +129,11 @@ class BaseController(ABC):
             return self.data_collector.episode_count
         return self._episode_num
     
+    def print_failure_reason(self) -> None:
+        """Print the last failure reason if it exists."""
+        if self._last_failure_reason:
+            print(f"Failure Reason: {self._last_failure_reason}")
+    
     def reset(self) -> None:
         """Reset the controller state between episodes."""
         if self._last_success:
@@ -137,6 +143,7 @@ class BaseController(ABC):
         self.check_success_counter = 0
         self.reset_needed = False
         self._last_success = False
+        self._last_failure_reason = ""
         if self.mode == "collect":
             self.data_collector.clear_cache()
 
