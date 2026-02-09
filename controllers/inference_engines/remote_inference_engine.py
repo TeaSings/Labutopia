@@ -9,7 +9,6 @@ try:
 except ModuleNotFoundError:
     print("OpenPI client not found. Please follow the instruction to install openpi-client'")
 
-
 class RemoteInferenceEngine(BaseInferenceEngine):
     """
     Remote inference engine using OpenPI client

@@ -257,7 +257,7 @@ def process_episode(args):
         return None, f"Error processing episode {episode_name}: {str(e)}"
 
 
-def main(data_dir: str, repo_name: str, *, push_to_hub: bool = False, fps: int = 10, robot_type: str = "franka", num_processes: int = 4):
+def main(data_dir: str, repo_name: str, *, push_to_hub: bool = False, fps: int = 60, robot_type: str = "franka", num_processes: int = 4):
     """Main conversion function
     
     Args:
