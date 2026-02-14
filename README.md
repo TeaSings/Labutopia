@@ -333,6 +333,8 @@ Convert LabUtopia format data to LeRobot format dataset:
 python scripts/convert_labsim_data_to_lerobot.py --data_dir outputs/collect/xxx/xxx/dataset --num_processes 8 --fps 60 --repo_name labutopia/level3-pick
 ```
 
+**Note:** The `--fps` argument specifies the control frequency of the converted data. Our collected demonstrations are sampled at 60Hz by default. If you want the converted dataset to have the same behavior as the original collection, make sure to set `--fps` to 60.
+
 ### Remote Inference
 
 LabUtopia supports using remote servers for model inference.

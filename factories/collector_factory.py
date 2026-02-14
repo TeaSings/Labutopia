@@ -1,6 +1,7 @@
 from typing import Dict, Type
 from data_collectors.data_collector import DataCollector
 from data_collectors.mock_collector import MockCollector
+from data_collectors.action_state_collector import ActionStateDataCollector
 
 _collector_registry: Dict[str, Type[DataCollector]] = {}
 
@@ -17,3 +18,4 @@ def create_collector(collector_type: str, *args, **kwargs) -> DataCollector:
 
 register_collector("default", DataCollector)
 register_collector("mock", MockCollector)
+register_collector("action_state", ActionStateDataCollector)

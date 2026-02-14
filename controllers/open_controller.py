@@ -96,6 +96,7 @@ class OpenTaskController(BaseController):
             Tuple containing the action, done flag, and success flag.
         """
         if not self.open_controller.is_done():
+            close_gripper_distance = state.get('close_gripper_distance', 0.023)
             if self.cfg.task.get("operate_type") == "door":
                 action = self.open_controller.forward(
                     handle_position=state['object_position'],
@@ -103,6 +104,7 @@ class OpenTaskController(BaseController):
                     revolute_joint_position=state['revolute_joint_position'],
                     gripper_position=state['gripper_position'],
                     end_effector_orientation=euler_angles_to_quats([0, 110, 0], degrees=True, extrinsic=False),
+                    close_gripper_distance=close_gripper_distance
                 )
             else:
                 action = self.open_controller.forward(
@@ -110,6 +112,7 @@ class OpenTaskController(BaseController):
                     current_joint_positions=state['joint_positions'],
                     gripper_position=state['gripper_position'],
                     end_effector_orientation=euler_angles_to_quats([90, 90, 0], degrees=True, extrinsic=False),
+                    close_gripper_distance=close_gripper_distance
                 )
             if 'camera_data' in state:
                 self.data_collector.cache_step(
@@ -123,7 +126,6 @@ class OpenTaskController(BaseController):
             else:
                 self.check_success_counter = 0
             
-            print(self.check_success_counter)
             return action, False, False
 
         success = self.check_success_counter >= self.REQUIRED_SUCCESS_STEPS
@@ -181,10 +183,27 @@ class OpenTaskController(BaseController):
         """
         current_pos = state['object_position']
         gripper_position = state['gripper_position']
-        return (
-            np.linalg.norm(np.array(current_pos) - self.initial_handle_position) > 0.12 and
-            np.linalg.norm(np.array(gripper_position) - np.array(current_pos)) > 0.04
-        )
+        
+        # Calculate distances
+        handle_move_distance = np.linalg.norm(np.array(current_pos) - self.initial_handle_position)
+        gripper_to_object_distance = np.linalg.norm(np.array(gripper_position) - np.array(current_pos))
+        
+        # Check conditions
+        handle_moved_enough = handle_move_distance > 0.12
+        gripper_far_enough = gripper_to_object_distance > 0.04
+        
+        success = handle_moved_enough and gripper_far_enough
+        
+        # Update failure reason
+        if not success:
+            if not handle_moved_enough and not gripper_far_enough:
+                self._last_failure_reason = f"Handle moved distance too short ({handle_move_distance:.4f}<0.12) and Gripper too close to object ({gripper_to_object_distance:.4f}<0.04)"
+            elif not handle_moved_enough:
+                self._last_failure_reason = f"Handle moved distance too short ({handle_move_distance:.4f}<0.12)"
+            elif not gripper_far_enough:
+                self._last_failure_reason = f"Gripper too close to object ({gripper_to_object_distance:.4f}<0.04)"
+        
+        return success
 
     def get_language_instruction(self) -> Optional[str]:
         """Get the language instruction for the current task.

@@ -45,7 +45,7 @@ cameras:
     focal_length: 4
     orientation: [0.69035, 0.15304, -0.15304, -0.69035]
     image_type: "rgb"
-    
+
   - prim_path: "/World/Franka/panda_hand/arm_camera"
     name: "camera_3"
     resolution: [256, 256]

@@ -94,6 +94,16 @@ class NavigationController(BaseController):
         if not self.waypoints_set and state.get('waypoints') is not None:
             self.ridgebase_controller.set_waypoints(state['waypoints'])
             self.waypoints_set = True
+            
+            # record the start and end positions of the navigation task
+            if hasattr(self, 'data_collector') and hasattr(self.data_collector, 'set_task_properties'):
+                waypoints = state['waypoints']
+                task_properties = {
+                    "start_position": waypoints[0].tolist() if hasattr(waypoints[0], 'tolist') else list(waypoints[0]),
+                    "end_position": waypoints[-1].tolist() if hasattr(waypoints[-1], 'tolist') else list(waypoints[-1]),
+                    "num_waypoints": len(waypoints)
+                }
+                self.data_collector.set_task_properties(task_properties)
         
         current_pose = state['current_pose']
 
@@ -106,9 +116,13 @@ class NavigationController(BaseController):
                 current_pose[2]
             ])
             
+            # convert action to numpy array
+            action_array = np.array(action) if not isinstance(action, np.ndarray) else action
+            
             self.data_collector.cache_step(
                 camera_images=state['camera_data'],
                 joint_angles=joint_positions,
+                action=action_array,
                 language_instruction=self.get_language_instruction()
             )
         
@@ -117,12 +131,24 @@ class NavigationController(BaseController):
             self.reset_needed = True
             
             if hasattr(self, 'data_collector'):
-                final_joint_positions = np.array([
-                    current_pose[0],
-                    current_pose[1],
-                    current_pose[2]
-                ])
-                self.data_collector.write_cached_data(final_joint_positions)
+                # cache the last step data
+                if 'camera_data' in state:
+                    joint_positions = np.array([
+                        current_pose[0],
+                        current_pose[1],
+                        current_pose[2]
+                    ])
+                    action_array = np.array(action) if not isinstance(action, np.ndarray) else action
+                    
+                    self.data_collector.cache_step(
+                        camera_images=state['camera_data'],
+                        joint_angles=joint_positions,
+                        action=action_array,
+                        language_instruction=self.get_language_instruction()
+                    )
+                
+                # write cached data (no final_joint_positions parameter)
+                self.data_collector.write_cached_data()
             
             return action, True, True
         

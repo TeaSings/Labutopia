@@ -136,7 +136,6 @@ class DeviceOperateController(BaseController):
             object_pos = state['beaker_position']
             target_pos = state['device_interior_position']
             dist = np.linalg.norm(object_pos[:2] - target_pos[:2])
-            print(dist, abs(object_pos[2] - target_pos[2]))
             return dist < 0.2 and abs(object_pos[2] - target_pos[2]) < 0.1  
         elif self.current_phase == Phase.PICK_BEAKER3:
             object_pos = state['beaker3_position']
@@ -216,6 +215,7 @@ class DeviceOperateController(BaseController):
                     revolute_joint_position=state['revolute_joint_position'],
                     end_effector_orientation=euler_angles_to_quat([0, 100, 0], degrees=True, extrinsic=False),
                     angle=100,
+                    close_gripper_distance=0.015
                 )
                 self.end_handle_position = state['door_handle_position']
                 

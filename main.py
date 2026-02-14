@@ -22,7 +22,11 @@ def parse_args():
 args = parse_args()
 
 # Set up simulation app based on arguments
-simulation_config = {"headless": args.headless}
+simulation_config = {
+    "headless": False,
+    "extra_args": ["--/rtx/raytracing/fractionalCutoutOpacity=true"],
+}
+
 simulation_app = SimulationApp(simulation_config)
 
 import hydra
@@ -123,6 +127,7 @@ def main():
             if action is not None:
                 robot.get_articulation_controller().apply_action(action)
             if done:
+                task_controller.print_failure_reason()
                 task.on_task_complete(is_success)
                 continue
             
