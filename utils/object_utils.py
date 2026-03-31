@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pxr import Usd, UsdGeom, Gf, UsdPhysics
 from isaacsim.core.utils.stage import get_stage_units
 import numpy as np
@@ -85,6 +87,19 @@ class ObjectUtils:
         transform = xformable.ComputeLocalToWorldTransform(Usd.TimeCode.Default())
         position = transform.ExtractTranslation()
         return np.array(position)
+
+    def get_world_rotation_matrix_3x3(self, object_path: str) -> Optional[np.ndarray]:
+        """从世界变换矩阵提取 3×3 旋转。PhysX 驱动刚体时，此结果随仿真更新，比只读 xformOp 属性更可靠。"""
+        prim = self._stage.GetPrimAtPath(object_path)
+        if not prim.IsValid():
+            return None
+        xformable = UsdGeom.Xformable(prim)
+        m = xformable.ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+        mat = np.zeros((4, 4), dtype=float)
+        for i in range(4):
+            for j in range(4):
+                mat[i, j] = float(m[i][j])
+        return mat[:3, :3]
     
     def set_object_position(self, object_path: str, position: np.ndarray, local_position: np.ndarray = None, position_offset: np.ndarray = None) -> None:
         """Set the object's position in world or local space."""
@@ -104,6 +119,54 @@ class ObjectUtils:
             xform_ops[0].Set(new_position)
         else:
             xformable.AddTranslateOp().Set(new_position)
+
+    def snapshot_object_xform_rotation(self, object_path: str):
+        """读取 prim 上当前旋转（`world.reset()` 之后应为资产默认朝向），供改平移后写回。
+
+        许多资产的「竖直」在 USD 里**不是**单位四元数/零欧拉，不可强制 identity。
+        返回 `None` 表示未找到常见 xform 旋转属性。
+        """
+        prim = self._stage.GetPrimAtPath(object_path)
+        if not prim.IsValid():
+            return None
+        orient_attr = prim.GetAttribute("xformOp:orient")
+        if orient_attr.IsValid():
+            v = orient_attr.Get()
+            if v is not None:
+                return ("orient", Gf.Quatf(v))
+        rot_attr = prim.GetAttribute("xformOp:rotateXYZ")
+        if rot_attr.IsValid():
+            v = rot_attr.Get()
+            if v is not None:
+                return ("rotateXYZ", Gf.Vec3f(v))
+        axes = {}
+        for name in ("xformOp:rotateX", "xformOp:rotateY", "xformOp:rotateZ"):
+            a = prim.GetAttribute(name)
+            if a.IsValid() and a.Get() is not None:
+                axes[name] = float(a.Get())
+        if axes:
+            return ("axes", axes)
+        return None
+
+    def restore_object_xform_rotation(self, object_path: str, snapshot) -> None:
+        """将 `snapshot_object_xform_rotation` 的快照写回（改 `set_object_position` 后调用）。"""
+        if snapshot is None:
+            return
+        prim = self._stage.GetPrimAtPath(object_path)
+        if not prim.IsValid():
+            return
+        kind, data = snapshot[0], snapshot[1]
+        if kind == "orient":
+            prim.GetAttribute("xformOp:orient").Set(data)
+            return
+        if kind == "rotateXYZ":
+            prim.GetAttribute("xformOp:rotateXYZ").Set(data)
+            return
+        if kind == "axes":
+            for name, val in data.items():
+                a = prim.GetAttribute(name)
+                if a.IsValid():
+                    a.Set(val)
             
     def get_geometry_center(self, object_name: str = None, object_path: str = None) -> np.ndarray:
         path = self._get_object_path(object_name, object_path)

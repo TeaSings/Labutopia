@@ -1,0 +1,14 @@
+# 参数加噪采集配置 - 自动生成失败样本用于 VLM 纠错微调
+defaults:
+  - level1_pick
+  - _self_
+
+name: Level1_pick_noise
+max_episodes: 50
+
+noise:
+  enabled: true
+  pre_offset_x: [-0.04, 0.04]   # ±4cm，覆盖更多情况
+  pre_offset_z: [-0.04, 0.04]
+  after_offset_z: [-0.04, 0.04]
+  end_effector_euler_deg: [-10, 10]  # ±10°

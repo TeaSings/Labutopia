@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
+import re
+import sys
 import numpy as np
 from isaacsim.sensors.camera import Camera
 from utils.object_utils import ObjectUtils
@@ -39,10 +41,19 @@ class BaseTask(ABC):
         self.setup_cameras()
         self.setup_objects()
         self.setup_materials()
-        
+        # 若配置了 obj_paths 但场景中均不存在，避免无限空跑
+        has_obj_paths = hasattr(self.cfg, 'task') and hasattr(self.cfg.task, 'obj_paths') and self.cfg.task.obj_paths
+        if has_obj_paths and len(self.obj_configs) == 0:
+            print("[BaseTask] 错误：task.obj_paths 中所有 prim 在场景中均不存在，请检查 usd_path 或运行 scripts/list_scene_prims.py 验证")
+            sys.exit(1)
         self.current_material_idx = 0
         if len(self.obj_configs) != 0:
-            self.episodes_per_obj = int(cfg.max_episodes / len(self.obj_configs))
+            # 优先使用 task.successes_per_obj（每仪器成功 N 次后切换），否则按 max_episodes 均分
+            task_cfg = getattr(cfg, 'task', None)
+            if task_cfg is not None and hasattr(task_cfg, 'successes_per_obj') and task_cfg.successes_per_obj is not None:
+                self.episodes_per_obj = int(task_cfg.successes_per_obj)
+            else:
+                self.episodes_per_obj = int(cfg.max_episodes / len(self.obj_configs))
         else:
             self.episodes_per_obj = 0
         self.current_obj_idx = 0
@@ -156,21 +167,29 @@ class BaseTask(ABC):
     def setup_objects(self) -> None:
         """
         Set up objects in the simulation world.
+        仅保留场景中存在的 prim，避免 object_position=None 导致 Pick 提前返回。
         """
         self.obj_configs = []
         if hasattr(self.cfg, 'task') and hasattr(self.cfg.task, 'obj_paths'):
             for obj in self.cfg.task.obj_paths:
                 if isinstance(obj, str):
-                    self.obj_configs.append({
+                    entry = {
                         'path': obj,
                         'position_range': {
                             'x': [0.24, 0.30],
                             'y': [-0.05, 0.05],
                             'z': [0.85, 0.85]
                         }
-                    })
+                    }
                 else:
-                    self.obj_configs.append(obj)
+                    entry = obj
+                # 支持 str、dict、OmegaConf DictConfig（DictConfig 非 dict 子类，需用 [] 取 path）
+                obj_path = str(entry if isinstance(entry, str) else entry['path'])
+                prim = self.stage.GetPrimAtPath(obj_path)
+                if prim.IsValid():
+                    self.obj_configs.append(entry)
+                else:
+                    print(f"[BaseTask] 跳过不存在的 prim: {obj_path}（lab 中可能未包含该资产）")
                 
     def setup_materials(self) -> None:
         """
@@ -247,10 +266,12 @@ class BaseTask(ABC):
             np.random.uniform(position_range['y'][0], position_range['y'][1]),
             np.random.uniform(position_range['z'][0], position_range['z'][1])
         ])
+        rot_snap = self.object_utils.snapshot_object_xform_rotation(obj_path)
         self.object_utils.set_object_position(object_path=obj_path, position=position)
+        self.object_utils.restore_object_xform_rotation(obj_path, rot_snap)
         return position
     
-    def place_objects_with_visibility_management(self, current_obj_idx: int, far_distance: float = 10.0) -> str:
+    def place_objects_with_visibility_management(self, current_obj_idx: int, far_distance: float = 10.0) -> Optional[str]:
         """
         Place objects and manage visibility, move non-current objects to far distance.
         
@@ -259,8 +280,15 @@ class BaseTask(ABC):
             far_distance: Far distance where non-current objects are placed
             
         Returns:
-            str: Path of current object
+            str or None: Path of current object；若当前物体 prim 无效则返回 None
         """
+        if current_obj_idx >= len(self.obj_configs):
+            return None
+        current_path = self.obj_configs[current_obj_idx]['path']
+        current_prim = self.stage.GetPrimAtPath(current_path)
+        if not current_prim.IsValid():
+            return None
+
         for i, obj_config in enumerate(self.obj_configs):
             obj_path = obj_config['path']
             position_range = obj_config['position_range']
@@ -278,11 +306,25 @@ class BaseTask(ABC):
                         far_distance * np.sin(angle),
                         0.1
                     ])
+                    rot_snap = self.object_utils.snapshot_object_xform_rotation(obj_path)
                     self.object_utils.set_object_position(object_path=obj_path, position=far_position)
+                    self.object_utils.restore_object_xform_rotation(obj_path, rot_snap)
                     set_prim_visibility(prim, False)
         
-        return self.obj_configs[current_obj_idx]['path']
-    
+        return current_path
+
+    @staticmethod
+    def get_object_category(object_path: str, obj_configs: List[dict] = None) -> str:
+        """同一类资产（如 conical_bottle02/03/04）归为同一 category，避免编号导致多类数据。
+        优先使用 obj_config 中的 category；否则去掉末尾数字/下划线推导。"""
+        obj_name = object_path.split("/")[-1]
+        if obj_configs:
+            for cfg in obj_configs:
+                if cfg.get('path') == object_path and cfg.get('category'):
+                    return cfg['category']
+        # 去掉末尾 _数字 或 数字，如 conical_bottle02→conical_bottle, beaker2→beaker
+        return re.sub(r'_?\d+$', '', obj_name) or obj_name
+
     def get_basic_state_info(self, joint_positions: np.ndarray = None, object_path: str = None, 
                            target_path: str = None, additional_info: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -313,11 +355,14 @@ class BaseTask(ABC):
         }
         
         if object_path:
+            obj_name = object_path.split("/")[-1]
+            obj_category = self.get_object_category(object_path, getattr(self, 'obj_configs', None))
             state.update({
                 'object_position': self.object_utils.get_geometry_center(object_path=object_path),
                 'object_size': self.object_utils.get_object_size(object_path=object_path),
                 'object_path': object_path,
-                'object_name': object_path.split("/")[-1]
+                'object_name': obj_name,
+                'object_category': obj_category,
             })
         
         if target_path:
@@ -343,7 +388,10 @@ class BaseTask(ABC):
         Returns:
             bool: Return True if should continue execution, False otherwise
         """
-        if self.frame_idx < 5:
+        # 相机渲染预热：headless/RTX 前几帧常为黑；可与 main 的 --render-warmup-steps 叠加
+        task = getattr(self.cfg, "task", None)
+        cam_warm = int(getattr(task, "camera_warmup_frames", 45) if task is not None else 45)
+        if self.frame_idx < cam_warm:
             return False
             
         if max_steps is None:

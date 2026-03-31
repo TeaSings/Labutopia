@@ -1,0 +1,9 @@
+# 低帧采集 - HDF5 固定 T=5（首+均匀中间+末）；转换: --mode full --temporal-stride 1 → 15 张
+defaults:
+  - level1_pick_noise
+  - _self_
+
+name: Level1_pick_noise_keyframes
+
+collector:
+  save_frames: 5   # 首 + 3 中间 + 末，均匀采样

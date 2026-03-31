@@ -30,6 +30,8 @@ def _write_episode_data(episode_path: str, episode_name: str,
         
         # Store camera data with Blosc compression and dynamic chunking
         for camera_name, image_data in camera_data.items():
+            if image_data.size == 0:
+                continue
             chunk_size = (min(64, image_data.shape[0]),) + image_data.shape[1:]
             kwargs = {
                 'data': image_data,
@@ -78,7 +80,8 @@ def _write_episode_data(episode_path: str, episode_name: str,
 
 class DataCollector:
     def __init__(self, camera_configs: List[dict], save_dir="output", 
-                 max_episodes=10, max_workers=4, compression=None):
+                 max_episodes=10, max_workers=4, compression=None, save_frames: int = -1,
+                 cache_stride: int = 1):
         """Initialize the data collector with multiprocessing support
         
         Args:
@@ -87,10 +90,16 @@ class DataCollector:
             max_episodes (int): Maximum number of episodes to record
             max_workers (int): Maximum number of parallel processes
             compression: Compression method for image data, None for no compression
+            save_frames: -1=保存全部帧, 1=仅首帧(VLM用,大幅省空间)
+            cache_stride: 仅当 save_frames==-1 时生效：每隔 N 次 cache_step 写入一帧（相机与 pose 对齐），
+                固定「采样步频」、episode 越长则 T 越大。与 convert --temporal-stride 二选一或组合见文档。
         """
         self.save_dir = save_dir
         self.max_episodes = max_episodes
         self.compression = compression
+        self.save_frames = save_frames
+        self.cache_stride = max(1, int(cache_stride)) if cache_stride else 1
+        self._cache_step_index = 0
         self.session_dir = os.path.join(save_dir, "dataset")
         self.mate_dir = os.path.join(self.session_dir, "meta")
         self.episode_file_path = os.path.join(self.mate_dir, "episode.jsonl")
@@ -127,6 +136,14 @@ class DataCollector:
                        For example, navigation task: {"start_position": [x, y, z], "end_position": [x, y, z]}
         """
         self.temp_task_properties = properties
+
+    def update_task_properties(self, updates: dict):
+        """Merge additional task properties (e.g. is_success) before write.
+        
+        Args:
+            updates: Dict to merge into temp_task_properties
+        """
+        self.temp_task_properties.update(updates)
         
     def cache_step(self, camera_images: dict, joint_angles: np.ndarray, language_instruction: Optional[str] = None):
         """Cache each step's data in temporary lists
@@ -136,10 +153,32 @@ class DataCollector:
             joint_angles: Robot joint angles
             language_instruction: Language instruction for the task
         """
+        self._cache_step_index += 1
+        if self.save_frames < 0 and self.cache_stride > 1:
+            if (self._cache_step_index - 1) % self.cache_stride != 0:
+                return
         if self.task_instructions is None and language_instruction is not None:
             self.task_instructions = language_instruction
         for camera_name, image in camera_images.items():
-            self.temp_cameras[camera_name].append(image)
+            if camera_name not in self.temp_cameras:
+                print(f"[DataCollector] 警告：camera_data key '{camera_name}' 不在 temp_cameras 中，跳过")
+                continue
+            lst = self.temp_cameras[camera_name]
+            if self.save_frames < 0:
+                lst.append(image)
+            elif self.save_frames == 1:
+                if len(lst) < 1:
+                    lst.append(image)
+            elif self.save_frames == 2:
+                if len(lst) == 0:
+                    lst.append(image)
+                elif len(lst) == 1:
+                    lst.append(image)
+                else:
+                    lst[-1] = image  # 持续覆盖末帧
+            else:
+                # save_frames >= 3: 低帧模式，先缓存全部，写入时均匀采样
+                lst.append(image)
         self.temp_agent_pose.append(joint_angles)
         if language_instruction is not None:
             self.temp_language_instruction = language_instruction
@@ -149,35 +188,68 @@ class DataCollector:
         if self.episode_count >= self.max_episodes:
             self.close()
             return
-            
+
+        if len(self.temp_agent_pose) == 0:
+            print("[DataCollector] 跳过写入：无缓存数据（可能为提前返回 episode）")
+            return
+
         # Add the final action
         self.temp_actions = self.temp_agent_pose[1:] + [final_joint_positions]
         
-        # Convert lists to numpy arrays
-        camera_data = {
-            name: np.array(images) 
-            for name, images in self.temp_cameras.items()
-        }
+        # Convert lists to numpy arrays，仅保留有数据的相机
+        camera_data = {}
+        for name, images in self.temp_cameras.items():
+            if len(images) > 0:
+                camera_data[name] = np.array(images)
+            else:
+                print(f"[DataCollector] 警告：相机 {name} 无数据，跳过")
         agent_pose_data = np.array(self.temp_agent_pose)
         actions_data = np.array(self.temp_actions)
+        # save_frames 限制时，pose/actions 与图像帧数对齐
+        if self.save_frames > 0:
+            T = len(agent_pose_data)
+            K = min(self.save_frames, T)
+            if K == 1:
+                agent_pose_data = agent_pose_data[:1]
+                actions_data = np.array([final_joint_positions])
+            elif K == 2:
+                agent_pose_data = np.array([agent_pose_data[0], agent_pose_data[-1]])
+                actions_data = np.array([self.temp_actions[0], final_joint_positions])
+            else:
+                # K >= 3: 均匀采样 [首, 中间..., 末]
+                indices = [0] + [int((T - 1) * i / (K - 1)) for i in range(1, K - 1)] + [T - 1]
+                indices = sorted(set(indices))[:K]
+                agent_pose_data = agent_pose_data[indices]
+                actions_data = np.array([self.temp_actions[i] for i in indices])
+            # camera_data 同样均匀采样
+            if self.save_frames >= 3 and T > 0:
+                K = min(self.save_frames, T)
+                indices = [0] + [int((T - 1) * i / (K - 1)) for i in range(1, K - 1)] + [T - 1]
+                indices = sorted(set(indices))[:K]
+                camera_data = {
+                    name: (arr[indices] if len(arr.shape) == 4 else arr)
+                    for name, arr in camera_data.items()
+                }
         
         # Create individual episode file path
         episode_name = f"episode_{self.episode_count:04d}"
         episode_path = os.path.join(self.session_dir, f"{episode_name}.h5")
         
-        # Submit writing task to process pool
-        future = self.process_pool.submit(
-            _write_episode_data,
-            episode_path,
-            episode_name,
-            camera_data,
-            agent_pose_data,
-            actions_data,
-            self.temp_task_properties,
-            self.temp_language_instruction,
-            self.compression
-        )
-        self.pending_futures.append(future)
+        # 同步写入，避免 Windows 下 ProcessPoolExecutor 序列化问题导致 dataset 为空
+        try:
+            _write_episode_data(
+                episode_path,
+                episode_name,
+                camera_data,
+                agent_pose_data,
+                actions_data,
+                self.temp_task_properties,
+                self.temp_language_instruction,
+                self.compression
+            )
+        except Exception as e:
+            print(f"[DataCollector] 写入失败 {episode_path}: {e}")
+        self.pending_futures.append(None)  # 保持兼容 close() 的 future 遍历
 
         info = {
             "episode_index": self.episode_count,
@@ -196,6 +268,7 @@ class DataCollector:
         self.temp_actions = []
         self.temp_language_instruction = None
         self.temp_task_properties = {}
+        self._cache_step_index = 0
         
         # Increment episode count
         self.episode_count += 1
@@ -209,12 +282,14 @@ class DataCollector:
         self.temp_language_instruction = None
         self.temp_task_properties = {}
         self.task_instructions = None
+        self._cache_step_index = 0
         
     def close(self, merge=False):
         """Close the data collector and merge all episode files"""
-        # Wait for all pending writing operations to complete
+        # Wait for all pending writing operations to complete (sync 模式下 future 为 None)
         for future in self.pending_futures:
-            future.result()
+            if future is not None:
+                future.result()
         
         # Shutdown process pool
         self.process_pool.shutdown(wait=True)

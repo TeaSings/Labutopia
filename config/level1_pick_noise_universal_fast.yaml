@@ -1,0 +1,15 @@
+# Pick 快速采集 - 牺牲少量数据质量换速度
+# save_frames=2、无压缩、较短 max_steps
+defaults:
+  - level1_pick_noise_universal_5obj
+  - _self_
+
+name: Level1_pick_noise_universal_fast
+max_episodes: 750
+
+collector:
+  save_frames: 2    # 首+末帧，写入量少于全长 (-1)
+  compression: null # 无 gzip，写入更快（文件更大）
+
+task:
+  max_steps: 400    # 失败 episode 更快超时重置

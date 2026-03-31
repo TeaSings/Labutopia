@@ -1,0 +1,5 @@
+defaults:
+  - level1_pick_fail
+
+name: Level1_pick_fail_1ep
+max_episodes: 1

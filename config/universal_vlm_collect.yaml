@@ -1,0 +1,47 @@
+# 通用 VLM 采集配置 - 所有原子动作统一使用，训练一个大模型以驱动机械臂执行多动作（Pick 为当前最先落地的实验）
+# 其他任务配置可继承此配置，仅覆盖 task_type、controller_type 等
+# 用法: defaults: [universal_vlm_collect, _self_]
+
+# Pick 专用：抓住但高度不足时尝试非重置纠正（继续上抬 10cm）
+# 多次 correction + 朝向正确空间：成功池、多步 correction_steps
+# 成功/失败判断：连续 N 步满足才判成功，避免物理抖动误判
+pick:
+  # 倾倒检测：基线仅采样；判倒在物理成败 / VLM 任务② 之后（见 VLM_LIVE_SIM.md）
+  tipped_detection_enabled: true
+  tipped_max_tilt_deg: 72.0
+  tipped_baseline_delay_steps: 0
+  tipped_local_up_axis: [0.0, 0.0, 1.0]
+  tipped_bbox_fallback_enabled: true
+  tipped_bbox_min_initial_verticality: 1.18
+  tipped_bbox_verticality_factor: 0.50
+  lift_correction_enabled: true
+  required_success_steps: 15     # 主 pick：连续 15 步物体高于 10cm 才判成功（默认 60 易误判失败）
+  lift_required_success_steps: 10  # lift correction：连续 10 步才判成功，避免单帧误判
+  success_pool_max: 500          # 每类物体最多保留的成功样本数
+  correction_steps_count: 3      # 失败时生成多步 correction 样本（1=仅单步）
+  correction_alpha: 0.5          # 每步朝正确空间移动的比例（0.5=半步）
+  p_ref_method: mean            # mean=成功样本均值 | nearest=最近成功样本
+  # 方向与幅值：HDF5 仍存完整 delta，并写 unit/magnitude 与保守一步 *_step；convert 训练标签优先用 *_step
+  correction_enrich_unit_magnitude: true
+  correction_suggested_max_picking_norm: 0.02   # 单步位置修正上限（米），方向不变
+  correction_suggested_max_euler_l2_deg: 8.0  # 单步欧拉修正 L2 上限（度）
+  correction_suggested_max_offset_abs: 0.06  # pre/after 标量偏移单步上限（米）
+  correction_step_max_picking_norm: 0.02      # 多步 correction_steps 内每步位置增量上限
+
+collector:
+  # 全长 HDF5（每 cache 步一帧，时间维 T 随 episode 变）；转换 scripts/convert_to_vlm_format.py --mode full --temporal-stride K
+  # 若采集已设 cache_stride>1（省盘），转换时一般用 --temporal-stride 1，避免无意 K×K 过稀。见 docs/DATA_AND_TRAINING_MASTER_PLAN.md §2.2
+  save_frames: -1
+  cache_stride: 20   # 仅 save_frames==-1 时生效；每 20 次 cache 写 1 帧，省盘；转换建议 --mode full --temporal-stride 1
+  compression: gzip
+
+noise:
+  enabled: true
+  pre_offset_x: [-0.04, 0.04]
+  pre_offset_z: [-0.04, 0.04]
+  after_offset_z: [-0.04, 0.04]
+  end_effector_euler_deg: [-10, 10]
+  picking_position_noise: [-0.02, 0.02]  # x/y/z 各轴 ±2cm，支持纯视觉 correction 修正位置
+  noise_scale: 1.0
+  failure_bias_ratio: 0.0
+  noise_distribution: edge_bias   # U 形分布：更多采样在范围边缘，提高失败样本比例

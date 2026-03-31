@@ -228,6 +228,8 @@ class MobilePickTask(BaseTask):
         if joint_positions is None:
             return None
         
+        obj_name = self.target_object_path.split("/")[-1] if self.target_object_path else ""
+        obj_category = BaseTask.get_object_category(self.target_object_path, []) if self.target_object_path else ""
         state = {
             'current_pose': current_pose,
             'start_point': self.current_start,
@@ -237,7 +239,8 @@ class MobilePickTask(BaseTask):
             'object_position': object_position,
             'object_size': object_size,
             'object_path': self.target_object_path,
-            'object_name': self.target_object_path.split("/")[-1] if self.target_object_path else "",
+            'object_name': obj_name,
+            'object_category': obj_category,
             'initial_object_position': self.initial_object_position,
             'joint_positions': joint_positions,
             'gripper_position': self.robot.get_gripper_position(),

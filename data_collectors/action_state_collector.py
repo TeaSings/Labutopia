@@ -84,7 +84,7 @@ class ActionStateDataCollector:
     """
     
     def __init__(self, camera_configs: List[dict], save_dir="output", 
-                 max_episodes=10, max_workers=4, compression=None):
+                 max_episodes=10, max_workers=4, compression=None, **kwargs):
         """initialize data collector with multiple processes
         
         Args:
@@ -93,6 +93,7 @@ class ActionStateDataCollector:
             max_episodes (int): maximum number of episodes to record
             max_workers (int): maximum number of parallel processes
             compression: compression method for image data, None means no compression
+            **kwargs: 忽略与 default DataCollector 对齐的多余参数（如 save_frames、cache_stride）
         """
         self.save_dir = save_dir
         self.max_episodes = max_episodes
@@ -135,6 +136,10 @@ class ActionStateDataCollector:
                        for example, navigation task: {"start_position": [x, y, z], "end_position": [x, y, z]}
         """
         self.temp_task_properties = properties
+
+    def update_task_properties(self, updates: dict):
+        """Merge additional task properties before write."""
+        self.temp_task_properties.update(updates)
     
     def cache_step(self, camera_images: dict, joint_angles: np.ndarray, 
                    action: np.ndarray, language_instruction: Optional[str] = None):

@@ -1,0 +1,11 @@
+# Pick 任务 - 通用 VLM 采集（所有动作统一方案）
+defaults:
+  - level1_pick
+  - universal_vlm_collect
+  - _self_
+
+name: Level1_pick_noise_universal
+max_episodes: 50
+
+noise:
+  enabled: true

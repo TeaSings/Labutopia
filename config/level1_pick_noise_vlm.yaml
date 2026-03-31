@@ -1,0 +1,9 @@
+# VLM 训练数据采集 - 仅保存首帧，大幅节省空间
+defaults:
+  - level1_pick_noise
+  - _self_
+
+name: Level1_pick_noise_vlm
+
+collector:
+  save_frames: 1   # 仅首帧，VLM 只需首帧，空间约省百倍

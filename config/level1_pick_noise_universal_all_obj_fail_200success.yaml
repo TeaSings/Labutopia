@@ -1,0 +1,13 @@
+# 全仪器 Pick - 高失败率（70% 1.75x 噪声）
+# 切换/结束条件继承 level1_pick_noise_universal_all_obj：每类 100 成功切换，共 4×100 成功结束（或 max_episodes 兜底）
+#
+# 采集命令（二选一）：
+#   1) python main.py --config-name level1_pick_noise_universal_all_obj_fail_200success --headless --no-video
+#   2) .\scripts\run_collect_headless.ps1 level1_pick_noise_universal_all_obj_fail_200success --no-video
+#   脚本会先设置 ENABLE_CAMERAS=1，若仍黑屏可手动执行: $env:ENABLE_CAMERAS="1"
+defaults:
+  - level1_pick_noise_universal_all_obj_fail
+  - _self_
+
+name: Level1_pick_noise_universal_all_obj_fail_200success
+# max_episodes / successes_per_obj 继承 all_obj_fail → all_obj

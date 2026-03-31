@@ -30,7 +30,8 @@ class BaseController(ABC):
         self.reset_needed = False
         self._last_success = False
         self._episode_num = 0
-        self.success_count = 0 
+        self.success_count = 0
+        self._skipped_count = 0  # 未写入的 episode（object_position=None 或异常）
         self._language_instruction = ""
         self.gripper_control = Gripper()
         self.REQUIRED_SUCCESS_STEPS = 60
@@ -47,13 +48,15 @@ class BaseController(ABC):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         OmegaConf.register_new_resolver("eval", lambda x: eval(x))
         if hasattr(cfg, "mode"):
-            self.mode = cfg.mode # "collect" or "infer"
+            self.mode = cfg.mode  # "collect" | "infer" | "vlm_live"
             if self.mode == "collect":
                 self._init_collect_mode(cfg, robot)
             elif self.mode == "infer":
                 self._init_infer_mode(cfg, robot)
+            elif self.mode == "vlm_live":
+                self._init_vlm_live_mode(cfg, robot)
             else:
-                raise ValueError(f"Invalid mode: {self.mode}. Expected 'collect' or 'infer'.")
+                raise ValueError(f"Invalid mode: {self.mode}. Expected 'collect', 'infer', or 'vlm_live'.")
 
     @property
     def language_instruction(self) -> Optional[str]:
@@ -99,12 +102,15 @@ class BaseController(ABC):
     
     def _init_collect_mode(self, cfg, robot=None):
         """Initialize the controller for collect mode."""
+        collector_cfg = cfg.collector
         self.data_collector = create_collector(
-            cfg.collector.type,
+            collector_cfg.type,
             camera_configs=cfg.cameras,
             save_dir=cfg.multi_run.run_dir,
             max_episodes=cfg.max_episodes,
-            compression=cfg.collector.compression
+            compression=getattr(collector_cfg, 'compression', None),
+            save_frames=getattr(collector_cfg, 'save_frames', -1),
+            cache_stride=int(getattr(collector_cfg, 'cache_stride', 1) or 1),
         )
     
     def _init_infer_mode(self, cfg, robot=None): 
@@ -118,6 +124,10 @@ class BaseController(ABC):
         self.inference_engine = InferenceEngineFactory.create_inference_engine(
             cfg, self.trajectory_controller
         )
+
+    def _init_vlm_live_mode(self, cfg, robot=None):
+        """实时 VLM 闭环（初始推断→执行→失败纠错）。仅 PickTaskController 实现。"""
+        raise NotImplementedError("mode vlm_live 仅支持 controller_type: pick（见 PickTaskController）。")
     
     def episode_num(self) -> int:
         """Get the current episode number.
@@ -138,19 +148,30 @@ class BaseController(ABC):
         """Reset the controller state between episodes."""
         if self._last_success:
             self.success_count += 1
+        skipped = getattr(self, '_early_return', False)
+        if skipped:
+            self._skipped_count = getattr(self, '_skipped_count', 0) + 1
         self._episode_num += 1
-        print(f"Episode Stats: Success Rate = {self.success_count}/{self._episode_num} ({(self.success_count/self._episode_num)*100:.2f}%)")
+        if self.mode == "collect":
+            written = self.data_collector.episode_count
+        else:
+            written = self._episode_num
+        msg = f"Episode Stats: Success = {self.success_count}/{written} written"
+        if self._skipped_count > 0:
+            msg += f", {self._skipped_count} skipped (object_position=None / tipped / exception)"
+        msg += f" ({100*self.success_count/max(1,written):.1f}% success)"
+        print(msg)
         self.check_success_counter = 0
         self.reset_needed = False
         self._last_success = False
         self._last_failure_reason = ""
-        if self.mode == "collect":
+        if self.mode == "collect" or self.mode == "vlm_live":
             self.data_collector.clear_cache()
 
         
     def close(self) -> None:
         """Clean up resources used by the controller."""
-        if self.mode == "collect" and hasattr(self, 'data_collector'):
+        if self.mode in ("collect", "vlm_live") and hasattr(self, 'data_collector'):
             self.data_collector.close()
         
     def need_reset(self) -> bool:
@@ -160,6 +181,16 @@ class BaseController(ABC):
             bool: True if reset is needed, False otherwise
         """
         return self.reset_needed
+
+    def is_atomic_action_complete(self) -> bool:
+        """Check if the current atomic action has fully completed.
+        Override in subclasses that use atomic action controllers.
+        When False, task timeout should NOT interrupt (wait for action to finish).
+        
+        Returns:
+            bool: True if atomic action is done or N/A, False if still running
+        """
+        return True
 
     def is_success(self):
         return self._last_success

@@ -1,0 +1,42 @@
+# 仿真内实时 VLM 闭环：首帧推断 pick 参数 → 执行原子动作 → 失败则多帧纠错并重试
+# 需先启动 OpenAI 兼容 API（如 LLaMA-Factory），默认 http://127.0.0.1:8000/v1
+#
+# 运行示例（在 LabUtopia 目录）:
+#   python main.py --config-name level1_pick_vlm_live --headless
+#   或带界面: python main.py --config-name level1_pick_vlm_live
+
+defaults:
+  - level1_pick
+  - _self_
+
+name: Level1_pick_vlm_live
+
+mode: vlm_live
+
+max_episodes: 20
+
+collector:
+  type: mock   # 不落盘 HDF5，仅跑闭环
+  save_frames: -1
+  # 与训练采集 universal_vlm_collect（collector.cache_stride）一致；未单独写 vlm_live.frame_stride 时缓冲沿用此值
+  cache_stride: 20
+
+noise:
+  enabled: false
+
+vlm_live:
+  base_url: http://127.0.0.1:8000/v1
+  # 须与 GET /v1/models 返回的 id 一致（如 LLaMA-Factory 部署的 LoRA 名）
+  model: Qwen3.5-9B-LabUtopia-lora
+  api_key: ""
+  # 0 或负数 = 不限制纠错次数，直到模型 is_success 或 terminate_correction_loop
+  max_correction_attempts: 0
+  # 每 N 仿真步追加一组三视角；省略则与 collector.cache_stride（训练采集默认 20）一致。步数少缓冲<3 时失败重试会用当前帧补齐；需更密可设 1
+  # frame_stride: 20
+  # 任务②判定失败后：先关节插值回 episode 起始姿态再请求纠错（默认 true；设 false 则与旧行为一致直接纠错）
+  # recover_to_home_after_failure: true
+  # recovery_joint_alpha: 0.4   # 每步向初始关节混合比例
+  # recovery_joint_tol: 0.08    # 认为已到达初始姿态的 max|Δq| 阈值（弧度）
+  # recovery_max_steps: 500     # 回退步数上限，超时强制进入纠错
+  timeout_s: 300
+  max_tokens: 512

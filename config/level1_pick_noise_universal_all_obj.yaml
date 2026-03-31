@@ -1,0 +1,44 @@
+# Pick 任务 - 全仪器 VLM 采集（4 类资产，每类 1 个实例）
+# 实例名（prim 路径）须与 lab_001.usd 中一致，见 ASSET_INVENTORY.md
+# 4 类：conical_bottle、beaker、graduated_cylinder、volume_flask
+# 切换：每类累计 **100 次成功** 后换下一类（见 BaseTask.update_object_and_material_indices）
+# 结束：累计成功数达 successes_per_obj × 有效物体数，或达到 max_episodes（兜底）
+# 噪声：继承 universal_vlm_collect，使用 U 形分布（edge_bias）
+defaults:
+  - level1_pick_noise_universal
+  - _self_
+
+name: Level1_pick_noise_universal_all_obj
+max_episodes: 99999   # 不以 ep 数截断；由 successes_per_obj × 物体数控制结束
+
+task:
+  successes_per_obj: 100   # 每类 100 次成功后再切换下一类
+  obj_paths:
+    # 锥形瓶：conical_bottle02（lab_001 中 02/03/04 均存在，此处取 02）
+    - path: "/World/conical_bottle02"
+      category: conical_bottle
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
+    # 烧杯：beaker2（lab_001 中 beaker1/2/3 存在，Pick 源用 beaker2）
+    - path: "/World/beaker2"
+      category: beaker
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
+    # 量筒：graduated_cylinder_03（lab_001 中为 03）
+    - path: "/World/graduated_cylinder_03"
+      category: graduated_cylinder
+      position_range:
+        x: [0.25, 0.35]
+        y: [0.0, 0.1]
+        z: [0.81, 0.81]
+    # 容量瓶：volume_flask（lab_001 中若不存在会自动跳过，启动时会打印 [BaseTask] 跳过不存在的 prim）
+    - path: "/World/volume_flask"
+      category: volume_flask
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]

@@ -12,13 +12,23 @@ def create_color_map(id_to_labels):
         color_map[id_str] = string_to_color(label)
     return color_map
 
+def _ensure_uint8_rgb(img):
+    """Isaac Sim 相机可能返回 float 0-1 或 RGBA，统一转为 uint8 RGB (H,W,3)"""
+    img = np.asarray(img)
+    if img.dtype in (np.float32, np.float64):
+        img = (np.clip(img, 0, 1) * 255).astype(np.uint8)
+    if img.ndim == 3 and img.shape[-1] == 4:
+        img = img[..., :3]
+    return img
+
 def process_single_type(camera, image_type):
     if image_type == "rgb":
         rgb_img = camera.get_rgb()
+        rgb_img = _ensure_uint8_rgb(rgb_img)
         img_for_record = np.transpose(rgb_img, (2, 0, 1))
         return img_for_record, img_for_record
     elif image_type == "pointcloud":
-        rgb_img = camera.get_rgb()
+        rgb_img = _ensure_uint8_rgb(camera.get_rgb())
         img_for_display = np.transpose(rgb_img, (2, 0, 1))
         pointcloud = camera.get_pointcloud()
         if pointcloud is not None:
@@ -61,8 +71,8 @@ def process_single_type(camera, image_type):
             return None, None
     elif image_type == "point":
         frame_dict = camera.get_current_frame()
-        rgb_img = camera.get_rgb()
-        img_for_display = rgb_img[..., ::-1].copy()  # Make a copy to modify
+        rgb_img = _ensure_uint8_rgb(camera.get_rgb())
+        img_for_display = rgb_img[..., ::-1].copy()  # RGB to BGR for cv2
         instance_id_seg = frame_dict.get('instance_segmentation')
         if instance_id_seg is not None:
             seg = instance_id_seg['data']

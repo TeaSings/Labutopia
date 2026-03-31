@@ -1,0 +1,35 @@
+# Pick 任务 - 5 种物体（不含 volume_flask，适用于 lab_001 中无 volume_flask 的场景）
+defaults:
+  - level1_pick_noise_universal
+  - _self_
+
+name: Level1_pick_noise_universal_5obj
+max_episodes: 750   # 150 ep/物体 × 5 物体
+
+task:
+  obj_paths:
+    - path: "/World/conical_bottle02"
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
+    - path: "/World/conical_bottle03"
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
+    - path: "/World/conical_bottle04"
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
+    - path: "/World/beaker2"
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
+    - path: "/World/graduated_cylinder_03"
+      position_range:
+        x: [0.25, 0.35]
+        y: [0.0, 0.1]
+        z: [0.81, 0.81]

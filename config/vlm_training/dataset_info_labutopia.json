@@ -1,0 +1,12 @@
+{
+  "labutopia_pick": {
+    "file_name": "labutopia_pick",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "images": "images"
+    }
+  }
+}

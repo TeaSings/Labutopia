@@ -1,0 +1,32 @@
+# Pour 任务 - 多仪器采集（4 种源容器轮换）
+# beaker2, conical_bottle02/03, graduated_cylinder_03 → beaker1
+defaults:
+  - level1_pour
+  - universal_vlm_collect
+  - _self_
+
+name: Level1_pour_multi_obj
+max_episodes: 600   # 150 ep/源 × 4 源
+
+task:
+  obj_paths:
+    - path: "/World/beaker2"
+      position_range:
+        x: [0.22, 0.37]
+        y: [0.0, 0.15]
+        z: [0.87, 0.87]
+    - path: "/World/conical_bottle02"
+      position_range:
+        x: [0.25, 0.35]
+        y: [0.0, 0.1]
+        z: [0.81, 0.81]
+    - path: "/World/conical_bottle03"
+      position_range:
+        x: [0.25, 0.35]
+        y: [0.0, 0.1]
+        z: [0.81, 0.81]
+    - path: "/World/graduated_cylinder_03"
+      position_range:
+        x: [0.25, 0.35]
+        y: [0.0, 0.1]
+        z: [0.81, 0.81]

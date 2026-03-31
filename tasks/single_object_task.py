@@ -27,9 +27,14 @@ class SingleObjectTask(BaseTask):
         if self.material_config:
             self.apply_material_to_object(self.material_config.path)
         
-        self.current_obj_path = self.place_objects_with_visibility_management(
-            self.current_obj_idx, far_distance=10.0
-        )
+        # 若当前物体 prim 无效，尝试下一个直到找到有效物体（setup 已过滤，此处为兜底）
+        for _ in range(max(1, len(self.obj_configs))):
+            self.current_obj_path = self.place_objects_with_visibility_management(
+                self.current_obj_idx, far_distance=10.0
+            )
+            if self.current_obj_path is not None:
+                break
+            self.current_obj_idx = (self.current_obj_idx + 1) % max(1, len(self.obj_configs))
         
     def step(self):
         """
@@ -43,9 +48,4 @@ class SingleObjectTask(BaseTask):
         if not self.check_frame_limits():
             return None
             
-        return self.get_basic_state_info(
-            object_path=self.current_obj_path,
-            additional_info={
-                'object_name': self.current_obj_path.split("/")[-1]
-            }
-        ) 
+        return self.get_basic_state_info(object_path=self.current_obj_path) 

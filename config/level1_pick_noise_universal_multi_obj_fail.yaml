@@ -1,0 +1,11 @@
+# 多物体 + 提高失败率
+defaults:
+  - level1_pick_noise_universal_multi_obj
+  - _self_
+
+name: Level1_pick_noise_universal_multi_obj_fail
+
+noise:
+  noise_scale: 1.75
+  failure_bias_ratio: 0.7   # 70% episode 使用 1.75x 噪声
+  noise_distribution: edge_bias

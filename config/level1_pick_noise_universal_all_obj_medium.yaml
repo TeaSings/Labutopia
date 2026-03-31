@@ -1,0 +1,14 @@
+# 全仪器 Pick - 中等失败率（介于 universal 默认与 all_obj_fail 高失败之间）
+# 继承 level1_pick_noise_universal_all_obj，仅调噪声强度
+defaults:
+  - level1_pick_noise_universal_all_obj
+  - _self_
+
+name: Level1_pick_noise_universal_all_obj_medium
+
+noise:
+  # 略提高失败：在 1.35/0.4 上再抬一档（仍低于 all_obj_fail 的 1.75/0.7）
+  noise_scale: 1.45
+  # 约 60% episode 使用放大噪声范围
+  failure_bias_ratio: 0.85
+  noise_distribution: edge_bias

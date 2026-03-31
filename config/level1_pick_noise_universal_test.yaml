@@ -1,0 +1,7 @@
+# Pick 测试配置 - 5 episode 快速验证
+defaults:
+  - level1_pick_noise_universal_5obj
+  - _self_
+
+name: Level1_pick_noise_universal_test
+max_episodes: 5

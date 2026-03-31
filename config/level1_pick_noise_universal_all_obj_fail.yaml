@@ -1,0 +1,12 @@
+# 全仪器 Pick - 提高失败率（用于平衡成功/失败样本）
+# 继承 level1_pick_noise_universal_all_obj，覆盖噪声参数
+defaults:
+  - level1_pick_noise_universal_all_obj
+  - _self_
+
+name: Level1_pick_noise_universal_all_obj_fail
+
+noise:
+  noise_scale: 1.75          # 噪声范围 1.75x
+  failure_bias_ratio: 0.7   # 70% episode 使用 1.75x 噪声
+  noise_distribution: edge_bias

@@ -1,0 +1,7 @@
+# 通用方案 - 1 episode 测试
+defaults:
+  - level1_pick_noise_universal
+  - _self_
+
+name: Level1_pick_noise_universal_1ep
+max_episodes: 1

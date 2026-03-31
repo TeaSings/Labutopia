@@ -1,0 +1,12 @@
+# 高失败率采集 - 用于平衡成功/失败样本比例
+# 方法1: 增大噪声范围 (noise_scale)
+# 方法2: 部分 episode 使用大噪声 (failure_bias_ratio)
+defaults:
+  - level1_pick_noise
+  - _self_
+
+name: Level1_pick_noise_fail
+
+noise:
+  noise_scale: 1.75          # 噪声范围 1.75x
+  failure_bias_ratio: 0.7   # 70% episode 使用 1.75x 噪声

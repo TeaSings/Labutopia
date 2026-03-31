@@ -1,0 +1,7 @@
+# 多物体采集 - 1 episode 测试
+defaults:
+  - level1_pick_noise_universal_multi_obj
+  - _self_
+
+name: Level1_pick_noise_universal_multi_obj_1ep
+max_episodes: 1

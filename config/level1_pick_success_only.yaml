@@ -1,0 +1,17 @@
+# 无噪声成功样本采集 - 用于正确参数空间估计
+# 产出：仅成功样本，params_used 含 picking_position、offsets、euler_deg
+# 用法：python main.py --config-name level1_pick_success_only --headless --no-video
+# 分析：python scripts/analyze_correct_space.py outputs/collect/.../dataset -o correct_space_stats.json
+defaults:
+  - level1_pick_noise_universal_all_obj
+  - _self_
+
+name: Level1_pick_success_only
+max_episodes: 200
+
+task:
+  successes_per_obj: null   # 禁用「每类 N 成功切换」；按 max_episodes 均分每类所需成功数（见 BaseTask）
+
+noise:
+  enabled: false
+  picking_position_noise: null  # 禁用位置噪声

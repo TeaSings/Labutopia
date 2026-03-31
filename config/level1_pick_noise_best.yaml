@@ -1,0 +1,9 @@
+# 轻量多视角采集 - 3 视角×2 时刻（HDF5 T=2）；转换: --mode full --temporal-stride 1 → 6 张
+defaults:
+  - level1_pick_noise
+  - _self_
+
+name: Level1_pick_noise_best
+
+collector:
+  save_frames: 2   # 首帧+末帧

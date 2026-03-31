@@ -1,0 +1,10 @@
+# 全仪器 Pick 200 成功 - 快速采集（max_steps 缩短，配合 --fast-sim 使用）
+# 继承 200success，覆盖 max_steps 使失败 episode 更快超时
+# 采集命令：.\scripts\run_collect_headless.ps1 level1_pick_noise_universal_all_obj_fail_200success_fast --no-video --fast-sim
+defaults:
+  - level1_pick_noise_universal_all_obj_fail_200success
+  - _self_
+
+name: Level1_pick_noise_universal_all_obj_fail_200success_fast
+task:
+  max_steps: 400   # 失败 episode 更快超时（默认 800）

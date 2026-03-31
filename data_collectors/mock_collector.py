@@ -6,19 +6,26 @@ from .data_collector import DataCollector
 class MockCollector(DataCollector):
     """Mock data collector for testing purposes - implements same interface as DataCollector but does nothing"""
     
-    def __init__(self, camera_configs: List[dict], save_dir="output", 
-                 max_episodes=10, max_workers=4, compression=None):
-        """Initialize the mock data collector
-        
-        Args:
-            camera_configs: List of camera configuration dicts, each containing 'name' key
-            save_dir (str): Root directory for saving data (ignored in mock)
-            max_episodes (int): Maximum number of episodes to record (ignored in mock)
-            max_workers (int): Maximum number of parallel processes (ignored in mock)
-            compression: Compression method for image data (ignored in mock)
-        """
-        # Call parent constructor but don't create directories or process pool
-        super().__init__(camera_configs, save_dir, max_episodes, max_workers, compression)
+    def __init__(
+        self,
+        camera_configs: List[dict],
+        save_dir="output",
+        max_episodes=10,
+        max_workers=4,
+        compression=None,
+        save_frames: int = -1,
+        cache_stride: int = 1,
+    ):
+        """Initialize the mock data collector（签名与 DataCollector 对齐，参数在 mock 中可忽略）。"""
+        super().__init__(
+            camera_configs,
+            save_dir,
+            max_episodes,
+            max_workers,
+            compression,
+            save_frames,
+            cache_stride,
+        )
         
         # Override to not create directories
         self.session_dir = os.path.join(save_dir, "dataset")
@@ -47,11 +54,14 @@ class MockCollector(DataCollector):
         pass
 
     def clear_cache(self):
-        """Mock clear cache - does nothing"""
-        # Do nothing - this is a mock collector
-        # Override parent method to not actually clear anything
-        self.episode_count += 1
-        pass
+        """与 DataCollector 一致：仅清空缓存，不增加 episode_count（episode_count 仅在 write 后增加）。"""
+        for camera_name in self.temp_cameras:
+            self.temp_cameras[camera_name] = []
+        self.temp_agent_pose = []
+        self.temp_actions = []
+        self.temp_language_instruction = None
+        self.task_instructions = None
+        self._cache_step_index = 0
         
     def close(self):
         """Mock close - does nothing"""

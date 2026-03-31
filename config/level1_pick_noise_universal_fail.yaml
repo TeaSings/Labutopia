@@ -1,0 +1,12 @@
+# 提高失败率 - 用于平衡成功/失败样本（继承 universal 的 5 帧等配置）
+# 成功概率过高时使用此配置
+defaults:
+  - level1_pick_noise_universal
+  - _self_
+
+name: Level1_pick_noise_universal_fail
+
+noise:
+  noise_scale: 1.75         # 噪声范围 1.75x
+  failure_bias_ratio: 0.7   # 70% episode 使用 1.75x 噪声
+  noise_distribution: edge_bias  # U 形分布：更多采样在范围边缘（远离最优值），提高失败率

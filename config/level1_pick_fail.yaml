@@ -1,0 +1,16 @@
+# 用于采集失败/错误视频的配置 - 通过刁钻物体位置和更短步数增加失败率
+defaults:
+  - level1_pick
+
+name: Level1_pick_fail
+max_episodes: 20
+
+task:
+  max_steps: 200  # 缩短步数，抓取来不及完成会超时失败
+  obj_paths:
+    - path: "/World/conical_bottle02"
+      position_range:
+        # 物体放在工作空间边缘，更难抓取
+        x: [0.33, 0.38]
+        y: [-0.12, 0.12]
+        z: [0.80, 0.80]

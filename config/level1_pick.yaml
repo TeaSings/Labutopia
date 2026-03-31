@@ -24,6 +24,14 @@ infer:
 
 task:
   max_steps: 800
+  # 在 task.step 返回 state 前至少跳过若干帧（与 main 的 --render-warmup-steps 互补，减轻相机全黑）
+  camera_warmup_frames: 45
+  # 机械臂可达范围，物体超出则重置不写入数据（可被子配置覆盖）
+  # z 上限 0.98：物体几何中心（如瓶口）可能略高于桌面 0.82
+  workspace_range:
+    x: [0.15, 0.50]
+    y: [-0.25, 0.25]
+    z: [0.75, 0.98]
   obj_paths:
     - path: "/World/conical_bottle02"
       position_range:
@@ -60,6 +68,31 @@ robot:
 collector:
   type: "default"
   compression: gzip
+  save_frames: -1   # -1=全部, 1=仅首帧, 2=首末帧, 3~N=首+均匀中间+末
+
+# Pick 控制器：倾倒为整局重置（见 docs/VLM_LIVE_SIM.md「两种重置」）；非纠错关节回退
+pick:
+  tipped_detection_enabled: true
+  tipped_max_tilt_deg: 72.0          # 相对「本局初始世界旋转 R0」的相对转角(°)；无矩阵时退化为竖直轴夹角
+  tipped_baseline_delay_steps: 0     # 前 N 步不锁 R0；判倒在任务②/物理成败之后（见 VLM_LIVE_SIM.md）
+  tipped_local_up_axis: [0.0, 0.0, 1.0]  # 物体局部「竖直向上」轴，多数资产为 +Z
+  # 根 prim 不转、子刚体倒时 R0 恒为 0°：用世界 AABB（含子 mesh）竖直度 sz/max(sx,sy) 相对初值下降判倒
+  tipped_bbox_fallback_enabled: true
+  tipped_bbox_min_initial_verticality: 1.18   # 初值 sz/max(sx,sy) 低于此则不用 bbox 法（避免扁盘误报）
+  tipped_bbox_verticality_factor: 0.50        # 当前竖直度 < 初值×该因子则判倒（越小越严、越不易误报）
+
+# 参数加噪配置（用于失败样本采集）
+# 单位：米(m) 或 度(deg)。universal_vlm_collect 会启用 picking_position_noise 以支持纯视觉 correction
+noise:
+  enabled: false
+  pre_offset_x: [-0.04, 0.04]      # 默认 0.05m，±4cm
+  pre_offset_z: [-0.04, 0.04]      # 默认 0.12m，±4cm
+  after_offset_z: [-0.04, 0.04]     # 默认 0.25m，±4cm
+  end_effector_euler_deg: [-10, 10]  # 末端姿态 [0,90,25] 每轴 ±10°
+  # picking_position_noise: [-0.02, 0.02]  # x/y/z 各轴 ±2cm，支持纯视觉 correction；null 禁用
+  noise_scale: 1.0                  # 噪声范围缩放，>1 增大噪声、提高失败率
+  failure_bias_ratio: 0.0           # 失败偏向：该比例 episode 使用 noise_scale，其余用 1.0
+  noise_distribution: uniform       # uniform 均匀 | edge_bias U 形（更多边缘值，提高失败率）
 
 hydra:
   run:

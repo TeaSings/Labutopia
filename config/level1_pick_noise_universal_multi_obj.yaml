@@ -1,0 +1,29 @@
+# Pick 任务 - 多物体 VLM 采集（锥形瓶 02/03/04 轮换，提升泛化）
+# object_type 自动归为 conical_bottle（去掉编号），避免同类资产拆成多类数据
+defaults:
+  - level1_pick_noise_universal
+  - _self_
+
+name: Level1_pick_noise_universal_multi_obj
+max_episodes: 150   # 建议 50 ep/物体 × 3 物体 ≈ 150
+
+task:
+  obj_paths:
+    - path: "/World/conical_bottle02"
+      category: conical_bottle   # 可选：显式指定，否则自动从名称推导
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
+    - path: "/World/conical_bottle03"
+      category: conical_bottle
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
+    - path: "/World/conical_bottle04"
+      category: conical_bottle
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
