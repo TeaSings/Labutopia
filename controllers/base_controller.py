@@ -32,15 +32,12 @@ class BaseController(ABC):
         self._episode_num = 0
         self.success_count = 0
         self._skipped_count = 0  # 未写入的 episode（object_position=None 或异常）
-        self._written_failure_reason_counts = {}
-        self._skipped_reason_counts = {}
         self._language_instruction = ""
         self.gripper_control = Gripper()
         self.REQUIRED_SUCCESS_STEPS = 60
         self.check_success_counter = 0
         self.rmp_controller = None
         self._last_failure_reason = ""
-        self._last_failure_category = ""
         
         self.rmp_controller = FrankaRMPFlowController(
             name="target_follower_controller",
@@ -141,94 +138,33 @@ class BaseController(ABC):
         if self.mode == "collect":
             return self.data_collector.episode_count
         return self._episode_num
-
-    def _infer_failure_category(self, reason: Optional[str], skipped: bool) -> str:
-        """Map free-form failure text to a stable category for episode-level stats."""
-        text = (reason or "").strip().lower()
-        if "object_position" in text and "none" in text:
-            return "object_position_none"
-        if "tipped" in text or "knocked over" in text:
-            return "object_tipped"
-        if "apply_action" in text:
-            return "apply_action_exception"
-        if "controller_exception" in text:
-            return "controller_exception"
-        if "exception" in text:
-            return "exception"
-        return "skipped_unknown" if skipped else "failed_unknown"
-
-    def set_failure_reason(self, reason: str, category: Optional[str] = None) -> None:
-        """Store the current episode failure details for per-episode and aggregate stats."""
-        self._last_failure_reason = (reason or "").strip()
-        self._last_failure_category = category or self._infer_failure_category(
-            self._last_failure_reason,
-            skipped=bool(getattr(self, "_early_return", False)),
-        )
-
-    @staticmethod
-    def _format_reason_counts(reason_counts: Dict[str, int]) -> str:
-        if not reason_counts:
-            return ""
-        parts = []
-        for key, value in sorted(reason_counts.items(), key=lambda item: (-item[1], item[0])):
-            parts.append(f"{key}={value}")
-        return ", ".join(parts)
     
     def print_failure_reason(self) -> None:
         """Print the last failure reason if it exists."""
-        if self._last_failure_reason and self._last_failure_category:
-            print(f"Failure Reason [{self._last_failure_category}]: {self._last_failure_reason}")
-        elif self._last_failure_reason:
+        if self._last_failure_reason:
             print(f"Failure Reason: {self._last_failure_reason}")
-        elif self._last_failure_category:
-            print(f"Failure Reason [{self._last_failure_category}]")
     
     def reset(self) -> None:
         """Reset the controller state between episodes."""
         if self._last_success:
             self.success_count += 1
         skipped = getattr(self, '_early_return', False)
-        if not self._last_success:
-            failure_category = self._last_failure_category or self._infer_failure_category(
-                self._last_failure_reason,
-                skipped=skipped,
-            )
-            if skipped:
-                self._skipped_count = getattr(self, '_skipped_count', 0) + 1
-                self._skipped_reason_counts[failure_category] = (
-                    self._skipped_reason_counts.get(failure_category, 0) + 1
-                )
-            else:
-                self._written_failure_reason_counts[failure_category] = (
-                    self._written_failure_reason_counts.get(failure_category, 0) + 1
-                )
-            detail = self._last_failure_reason or failure_category
-            outcome = "skipped" if skipped else "failed"
-            print(f"Episode Result: {outcome} | category={failure_category} | reason={detail}")
+        if skipped:
+            self._skipped_count = getattr(self, '_skipped_count', 0) + 1
         self._episode_num += 1
         if self.mode == "collect":
             written = self.data_collector.episode_count
         else:
             written = self._episode_num
-        written_failures = max(0, written - self.success_count)
         msg = f"Episode Stats: Success = {self.success_count}/{written} written"
-        if written_failures > 0 and self._written_failure_reason_counts:
-            msg += (
-                f", {written_failures} written failures "
-                f"[{self._format_reason_counts(self._written_failure_reason_counts)}]"
-            )
         if self._skipped_count > 0:
-            msg += f", {self._skipped_count} skipped"
-            if self._skipped_reason_counts:
-                msg += f" [{self._format_reason_counts(self._skipped_reason_counts)}]"
+            msg += f", {self._skipped_count} skipped (object_position=None / tipped / exception)"
         msg += f" ({100*self.success_count/max(1,written):.1f}% success)"
         print(msg)
         self.check_success_counter = 0
         self.reset_needed = False
         self._last_success = False
         self._last_failure_reason = ""
-        self._last_failure_category = ""
-        self._early_return = False
         if self.mode == "collect" or self.mode == "vlm_live":
             self.data_collector.clear_cache()
 

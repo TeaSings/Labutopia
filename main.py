@@ -288,11 +288,6 @@ def main():
                 action, done, is_success = task_controller.step(state)
             except Exception as e:
                 print(f"[Main] 控制器/仿真器异常，不写入数据，直接重置: {e}")
-                if hasattr(task_controller, "set_failure_reason"):
-                    task_controller.set_failure_reason(
-                        f"controller_exception: {e}",
-                        category="controller_exception",
-                    )
                 setattr(task_controller, '_early_return', True)
                 task_controller.reset_needed = True
                 continue
@@ -302,11 +297,6 @@ def main():
                     robot.get_articulation_controller().apply_action(action)
                 except Exception as e:
                     print(f"[Main] apply_action 异常，不写入数据，直接重置: {e}")
-                    if hasattr(task_controller, "set_failure_reason"):
-                        task_controller.set_failure_reason(
-                            f"apply_action exception: {e}",
-                            category="apply_action_exception",
-                        )
                     setattr(task_controller, '_early_return', True)
                     task_controller.reset_needed = True
                     continue
