@@ -669,7 +669,7 @@ class PickTaskController(BaseController):
         self.reset_needed = True
         self._last_success = False
         self._early_return = True
-        self._last_failure_reason = "object tipped / knocked over"
+        self.set_failure_reason("object tipped / knocked over", category="object_tipped")
         print(f"{log_prefix} 检测到物体倾倒，本 episode 重置（不写盘）")
         return True
 
@@ -728,6 +728,49 @@ class PickTaskController(BaseController):
         if obj_z is None or init_z is None:
             return False
         return obj_z > init_z + 0.1
+
+    def _set_collect_failure_reason_from_state(
+        self,
+        state: dict,
+        *,
+        category: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Derive a stable collect-mode failure label from the final object state."""
+        if category is not None or reason is not None:
+            self.set_failure_reason(reason or "pick failed", category=category)
+            return
+
+        delta_z = None
+        obj_pos = state.get("object_position")
+        if obj_pos is not None and self.initial_position is not None:
+            try:
+                delta_z = float(obj_pos[2]) - float(self.initial_position[2])
+            except (TypeError, IndexError, ValueError):
+                delta_z = None
+
+        if delta_z is None:
+            self.set_failure_reason(
+                "pick finished without reaching success condition",
+                category="pick_failed_after_execution",
+            )
+        elif delta_z > 0.02:
+            self.set_failure_reason(
+                f"object lifted by {delta_z:.3f}m but did not exceed success threshold 0.100m",
+                category="grasped_but_lifted_too_low",
+            )
+        else:
+            self.set_failure_reason(
+                f"object lift delta_z={delta_z:.3f}m, below grasp threshold 0.020m",
+                category="missed_grasp_or_no_lift",
+            )
+
+    def _append_failure_metadata(self, updates: dict) -> dict:
+        if self._last_failure_category:
+            updates["failure_category"] = self._last_failure_category
+        if self._last_failure_reason:
+            updates["failure_reason"] = self._last_failure_reason
+        return updates
 
     def _mean_params(self, params_list: list) -> Optional[dict]:
         """从成功样本列表计算参数均值，作为正确空间的参考点"""
@@ -992,6 +1035,7 @@ class PickTaskController(BaseController):
         """
         # 若物体位置无法获取，立刻结束当前 episode 并重置（不写入数据、不保存 video）
         if state.get('object_position') is None:
+            self.set_failure_reason("object_position=None", category="object_position_none")
             self.reset_needed = True
             self._early_return = True
             print("[Pick] 提前返回：object_position=None")
@@ -1144,6 +1188,11 @@ class PickTaskController(BaseController):
                 self._lift_correction_active = False
                 if self._check_tipped_reset_episode(state, "[Pick][Collect]"):
                     return None, True, False
+                self._set_collect_failure_reason_from_state(
+                    state,
+                    category="lift_correction_failed",
+                    reason="grasped object but lift correction still failed to reach success threshold",
+                )
                 updates = {"is_success": False, "was_lift_corrected_attempted": True}
                 if hasattr(self, '_last_params_used') and self._last_params_used and hasattr(self, '_last_object_type'):
                     params_used = self._last_params_used
@@ -1160,6 +1209,7 @@ class PickTaskController(BaseController):
                         )
                         if correction_steps:
                             updates["correction_steps"] = correction_steps
+                updates = self._append_failure_metadata(updates)
                 updates.update(self._snapshot_object_position_for_task_props(state))
                 if hasattr(self.data_collector, 'update_task_properties'):
                     self.data_collector.update_task_properties(updates)
@@ -1171,6 +1221,7 @@ class PickTaskController(BaseController):
 
         # 失败样本：主 pick 失败当步已判过倾倒；此处为未走 lift 的失败写盘路径
         # 失败样本：用成功池计算 correction_gt 朝向正确空间，并生成多步 correction_steps
+        self._set_collect_failure_reason_from_state(state)
         if hasattr(self, '_last_params_used') and self._last_params_used and hasattr(self, '_last_object_type'):
             params_used = self._last_params_used
             object_type = self._last_object_type
@@ -1190,13 +1241,15 @@ class PickTaskController(BaseController):
             updates = {"is_success": False, "correction_gt": correction_gt}
             if correction_steps:
                 updates["correction_steps"] = correction_steps
+            updates = self._append_failure_metadata(updates)
             updates.update(self._snapshot_object_position_for_task_props(state))
             if hasattr(self.data_collector, 'update_task_properties'):
                 self.data_collector.update_task_properties(updates)
         else:
             if hasattr(self.data_collector, 'update_task_properties'):
                 _snap = self._snapshot_object_position_for_task_props(state)
-                self.data_collector.update_task_properties({"is_success": False, **_snap})
+                updates = self._append_failure_metadata({"is_success": False, **_snap})
+                self.data_collector.update_task_properties(updates)
         self.data_collector.write_cached_data(state['joint_positions'][:-1])
         self._last_success = False
         self.reset_needed = True
@@ -1209,6 +1262,7 @@ class PickTaskController(BaseController):
         纠错关节回退见 `_vlm_recovering_to_home`（非整局重置）。
         """
         if state.get("object_position") is None:
+            self.set_failure_reason("object_position=None", category="object_position_none")
             self.reset_needed = True
             self._early_return = True
             print("[Pick][VLM] 提前返回：object_position=None")
@@ -1362,6 +1416,7 @@ class PickTaskController(BaseController):
             tuple: (action, done, success) indicating control output and episode status
         """
         if state.get("object_position") is None:
+            self.set_failure_reason("object_position=None", category="object_position_none")
             self.reset_needed = True
             self._early_return = True
             return None, True, False
