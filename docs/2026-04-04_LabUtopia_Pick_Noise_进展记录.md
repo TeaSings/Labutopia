@@ -10,7 +10,11 @@
 
 - 保持 `level1_pick` 基线可稳定运行
 - 将带噪声采集的成功率控制在 `20% ~ 40%`
-- 将噪声采样方式从 `edge_bias` 改为 `uniform`，并支持按固定 episode 数切换物体位置和物体类别
+- 将噪声采样方式从 `edge_bias` 改为 `uniform`
+- 逐步把采集协议改成 `stratified` 方式：
+  - 同一物体在同一 pose 下连续采多局
+  - 达到设定阈值后再换 pose
+  - 在多物体版本中，再按固定 episode 数切换物体类别
 
 ## 二、最近已经确认并完成的事项
 
@@ -27,6 +31,11 @@
 - `VK_ICD_FILENAMES=/etc/vulkan/icd.d/nvidia_icd.json`
 
 这一套启动命令能够确保整个项目正确运行起来。
+
+另外，本地仓库当前已经恢复为干净工作区，可以重新走更正常的同步流程：
+
+- 本地建分支、提交、`git push`
+- 远程 `git fetch / git checkout / git pull`
 
 ### 2. `level1_pick` 基础链路已经跑通
 
@@ -115,6 +124,46 @@
 - 每 `150` 个 episode 切换一次物体类别
 - 每个物体自己的 `position_range` 也集中定义在同一个配置里
 
+### 4. 根据学长新给出的 stratified 配置，补齐了 pose 分层采集逻辑
+
+涉及文件：
+
+- [config/level1_pick_stratified.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified.yaml)
+- [tasks/base_task.py](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/tasks/base_task.py)
+
+后来学长给出了一版新的参考配置 `level1_pick_stratified.yaml`。这份配置明确了一个新的采集方向：
+
+- 不再简单按固定 episode 数频繁换 pose
+- 而是在同一物体、同一 pose 下，连续积累成功/失败与纠错标签
+- 优先按 `successes_per_pose` 控制何时换 pose
+
+在此基础上，本次把原先还没有真正落地的字段补成了可执行逻辑，新增支持：
+
+- `task.stratified_collection`
+- `task.successes_per_pose`
+- `task.episodes_per_pose`
+
+补齐后的效果是：
+
+- 当启用 `stratified_collection` 时，可以按“累计成功数”或“累计 episode 数”控制 pose 切换
+- pose 切换与物体切换被拆成两层逻辑，便于之后单独调整
+- 这样就能真正实现“固定 pose 多局采集，再换 pose”的分层采集过程
+
+### 5. 新增多物体 stratified 配置
+
+新增文件：
+
+- [config/level1_pick_stratified_all_obj.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified_all_obj.yaml)
+- [config/level1_pick_stratified_all_obj_1ep.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified_all_obj_1ep.yaml)
+
+这套配置是在 `level1_pick_stratified.yaml` 基础上扩展出来的多物体版本，当前语义是：
+
+- 同一物体、同一 pose 下累计 `10` 次成功后换 pose
+- 同一物体累计 `150` 个 episode 后切换到下一个物体
+- 噪声仍采用更激进的 `uniform` 设定，用于把成功率压到目标区间
+
+这比之前的 `uniform_all_obj_pos10_obj150` 方案更贴近学长现在的意图，因为它把“pose 分层采集”和“object 轮换”真正分开了。
+
 ## 四、当前已经达到的阶段性结果
 
 到目前为止，可以明确认为已经完成的阶段性任务有：
@@ -138,18 +187,33 @@
 
 - `uniform` 噪声
 - 成功率目标 `20% ~ 40%`
-- 每 `10` 次换位置
-- 每 `150` 次换物体
+- 单物体主线已转向 `stratified` 分层采集
+- 多物体版本可在 stratified 基础上继续按 episode 数切换物体
+
+### 4. 当前本地代码已经达到可同步、可验证状态
+
+本次涉及 `stratified` 的核心逻辑已经补到本地代码中，并且已经通过静态校验：
+
+```bash
+python3 -m py_compile tasks/base_task.py main.py controllers/pick_controller.py
+```
+
+这意味着当前状态已经不是“只停留在讨论和设计”，而是可以进入：
+
+- 本地提交分支
+- 推送到 GitHub
+- 远程机器直接 `git pull`
+- 再做 1ep 冒烟测试和正式运行
 
 
 ## 五、当前仍待进一步验证的部分
 
 以下内容已经设计或写入本地代码，但还需要在远程机器上继续验证：
 
-- 新增的 episode 级切换逻辑是否完全符合预期
-- 新配置 `level1_pick_noise_uniform_all_obj_pos10_obj150` 跑起来后，是否真的实现：
-  - 位置每 10 次切换
-  - 物体每 150 次切换
+- `stratified` 逻辑在远程机器上的真实行为是否完全符合预期
+- 新配置 `level1_pick_stratified_all_obj` 跑起来后，是否真的实现：
+  - 同一 pose 下累计 `10` 次成功后再换 pose
+  - 同一物体累计 `150` 个 episode 后再换到下一个物体
 - 在 `uniform` 噪声下，成功率是否能通过调节 `noise_scale` 稳定落入 `20% ~ 40%`
 
 因此，当前状态更准确地说是：
@@ -157,6 +221,7 @@
 - 路线已明确
 - 代码结构已准备
 - 配置方案已独立出来
+- stratified 主线已经在本地代码层面接通
 - 但完整远程实验结果还需要继续补充
 
 ## 六、后续建议记录方式
@@ -180,4 +245,5 @@
 - 带噪声采集已经能够稳定输出结果，当前主要矛盾转为噪声分布与采集协议设计
 - 本周最大的变化不是单个参数调优，而是把调参思路从“提高成功率”转成“控制数据难度分布”
 - 为了适应新的采集要求，已经开始把实验入口统一到独立 YAML 配置中，并对任务层调度逻辑进行了小范围扩展
-- 下一步主要工作将是基于新配置继续在远程机器上验证采集节奏与成功率区间
+- 最近又根据学长新给出的 `stratified` 配置，进一步把 pose 分层采集逻辑补到代码里
+- 下一步主要工作将是把这套 stratified 多物体配置同步到远程机器，并验证采集节奏与成功率区间
