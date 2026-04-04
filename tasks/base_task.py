@@ -68,8 +68,21 @@ class BaseTask(ABC):
             self.object_switch_metric = 'success'
         self.current_obj_idx = 0
         self.current_obj_episodes = 0
-        self.position_switch_interval = max(1, int(getattr(task_cfg, 'position_switch_interval', 1) or 1)) if task_cfg is not None else 1
-        self.current_position_episodes = 0
+        self.stratified_collection = bool(getattr(task_cfg, 'stratified_collection', False)) if task_cfg is not None else False
+        pose_switch_interval = 1
+        self.pose_switch_metric = 'episode'
+        if task_cfg is not None:
+            if self.stratified_collection and hasattr(task_cfg, 'successes_per_pose') and task_cfg.successes_per_pose is not None:
+                pose_switch_interval = int(task_cfg.successes_per_pose)
+                self.pose_switch_metric = 'success'
+            elif self.stratified_collection and hasattr(task_cfg, 'episodes_per_pose') and task_cfg.episodes_per_pose is not None:
+                pose_switch_interval = int(task_cfg.episodes_per_pose)
+                self.pose_switch_metric = 'episode'
+            elif hasattr(task_cfg, 'position_switch_interval') and task_cfg.position_switch_interval is not None:
+                pose_switch_interval = int(task_cfg.position_switch_interval)
+                self.pose_switch_metric = 'episode'
+        self.position_switch_interval = max(1, pose_switch_interval)
+        self.current_position_counter = 0
         self.current_obj_position = None
         self.current_position_obj_idx = None
         
@@ -316,15 +329,13 @@ class BaseTask(ABC):
                     should_resample = (
                         self.current_obj_position is None
                         or self.current_position_obj_idx != current_obj_idx
-                        or self.current_position_episodes >= self.position_switch_interval
+                        or self.current_position_counter >= self.position_switch_interval
                     )
                     if should_resample:
                         self.current_obj_position = self.randomize_object_position(obj_path, position_range)
                         self.current_position_obj_idx = current_obj_idx
-                        self.current_position_episodes = 0
                     else:
                         self._set_object_position_preserve_rotation(obj_path, self.current_obj_position)
-                    self.current_position_episodes += 1
                     set_prim_visibility(prim, True)
                 else:
                     # Move non-current objects to far distance
@@ -438,6 +449,13 @@ class BaseTask(ABC):
         Args:
             success: Whether task completed successfully
         """
+        should_count_pose = success if self.pose_switch_metric == 'success' else True
+        if should_count_pose and len(self.obj_configs) > 0:
+            self.current_position_counter += 1
+            if self.current_position_counter >= self.position_switch_interval:
+                self.current_obj_position = None
+                self.current_position_obj_idx = None
+                self.current_position_counter = 0
         should_count_episode = success if self.object_switch_metric == 'success' else True
         if should_count_episode:
             self.current_obj_episodes += 1
@@ -446,7 +464,7 @@ class BaseTask(ABC):
                 self.current_obj_episodes = 0
                 self.current_obj_position = None
                 self.current_position_obj_idx = None
-                self.current_position_episodes = 0
+                self.current_position_counter = 0
         if success:
             if self.available_materials:
                 self.current_material_idx = (self.current_material_idx + 1) % len(self.available_materials)

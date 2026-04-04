@@ -1,0 +1,43 @@
+# Pick 分层采集：多物体版本
+# 语义：
+# 1. 同一物体在同一 pose 下累计 10 次成功后，再在对应 position_range 内重新采样 pose
+# 2. 同一物体累计 150 个 episode 后，切换到下一个物体
+# 3. 噪声分布使用 uniform，目标成功率约 20% ~ 40%
+
+defaults:
+  - level1_pick_stratified
+  - _self_
+
+name: Level1_pick_stratified_all_obj
+max_episodes: 99999
+
+task:
+  stratified_collection: true
+  successes_per_pose: 10
+  object_switch_metric: episode
+  object_switch_interval: 150
+  obj_paths:
+    - path: "/World/conical_bottle02"
+      category: conical_bottle
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
+    - path: "/World/beaker2"
+      category: beaker
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
+    - path: "/World/graduated_cylinder_03"
+      category: graduated_cylinder
+      position_range:
+        x: [0.25, 0.35]
+        y: [0.0, 0.1]
+        z: [0.81, 0.81]
+    - path: "/World/volume_flask"
+      category: volume_flask
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
