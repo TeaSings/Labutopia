@@ -83,8 +83,11 @@ class BaseTask(ABC):
                 self.pose_switch_metric = 'episode'
         self.position_switch_interval = max(1, pose_switch_interval)
         self.current_position_counter = 0
+        self.current_pose_id = 0
         self.current_obj_position = None
         self.current_position_obj_idx = None
+        self._last_pose_resampled = False
+        self.debug_collection_schedule = bool(getattr(task_cfg, 'debug_collection_schedule', False)) if task_cfg is not None else False
         
     def reset(self) -> None:
         """
@@ -333,9 +336,12 @@ class BaseTask(ABC):
                     )
                     if should_resample:
                         self.current_obj_position = self.randomize_object_position(obj_path, position_range)
+                        self.current_pose_id += 1
                         self.current_position_obj_idx = current_obj_idx
+                        self._last_pose_resampled = True
                     else:
                         self._set_object_position_preserve_rotation(obj_path, self.current_obj_position)
+                        self._last_pose_resampled = False
                     set_prim_visibility(prim, True)
                 else:
                     # Move non-current objects to far distance
@@ -402,6 +408,16 @@ class BaseTask(ABC):
                 'object_path': object_path,
                 'object_name': obj_name,
                 'object_category': obj_category,
+                'sampled_object_position': self.current_obj_position.tolist() if self.current_obj_position is not None else None,
+                'object_index': int(self.current_obj_idx),
+                'object_episode_counter': int(self.current_obj_episodes),
+                'object_switch_interval': int(self.episodes_per_obj),
+                'object_switch_metric': self.object_switch_metric,
+                'pose_counter': int(self.current_position_counter),
+                'pose_switch_interval': int(self.position_switch_interval),
+                'pose_switch_metric': self.pose_switch_metric,
+                'pose_id': int(self.current_pose_id),
+                'pose_resampled_this_reset': bool(self._last_pose_resampled),
             })
         
         if target_path:

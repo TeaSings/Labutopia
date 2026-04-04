@@ -16,10 +16,16 @@ def object_type_of(row: dict) -> str:
 
 def pose_of(row: dict):
     task_properties = row.get("task_properties", {})
-    pos = task_properties.get("object_position")
+    pos = task_properties.get("sampled_object_position")
+    if pos is None:
+        pos = task_properties.get("object_position")
     if pos is None:
         return None
     return tuple(round(float(x), 4) for x in pos[:3])
+
+
+def schedule_of(row: dict) -> dict:
+    return row.get("task_properties", {}).get("collection_schedule", {})
 
 
 def load_rows(jsonl_path: Path) -> list[dict]:
@@ -74,6 +80,22 @@ def print_pose_blocks(rows: list[dict], max_blocks: int = 30) -> None:
                 break
 
 
+def print_schedule_rows(rows: list[dict], max_rows: int = 30) -> None:
+    print(f"\n[First {max_rows} schedule rows]")
+    for i, row in enumerate(rows[:max_rows]):
+        sched = schedule_of(row)
+        print(
+            f"{i:04d} | obj={object_type_of(row):20s} "
+            f"| obj_idx={sched.get('object_index')} "
+            f"| obj_counter={sched.get('object_episode_counter')}/{sched.get('object_switch_interval')} "
+            f"| pose_id={sched.get('pose_id')} "
+            f"| pose_counter={sched.get('pose_counter')}/{sched.get('pose_switch_interval')} "
+            f"| pose_metric={sched.get('pose_switch_metric')} "
+            f"| resampled={sched.get('pose_resampled_this_reset')} "
+            f"| sampled_pos={pose_of(row)}"
+        )
+
+
 def main() -> int:
     jsonl_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_JSONL
     if not jsonl_path.exists():
@@ -86,6 +108,7 @@ def main() -> int:
 
     print_object_blocks(rows)
     print_pose_blocks(rows, max_blocks=30)
+    print_schedule_rows(rows, max_rows=30)
     return 0
 
 

@@ -1,0 +1,17 @@
+# 调度逻辑快速验证版：
+# - 用较小阈值验证 object / pose 切换是否按预期生效
+# - 不是正式采集配置
+
+defaults:
+  - level1_pick_stratified_all_obj
+  - _self_
+
+name: Level1_pick_stratified_all_obj_debug
+max_episodes: 24
+
+task:
+  debug_collection_schedule: true
+  object_switch_metric: episode
+  object_switch_interval: 6
+  successes_per_pose: null
+  episodes_per_pose: 3

@@ -35,6 +35,20 @@ class SingleObjectTask(BaseTask):
             if self.current_obj_path is not None:
                 break
             self.current_obj_idx = (self.current_obj_idx + 1) % max(1, len(self.obj_configs))
+        if getattr(self, "debug_collection_schedule", False) and self.current_obj_path is not None:
+            sampled = getattr(self, "current_obj_position", None)
+            sampled_str = sampled.tolist() if sampled is not None else None
+            print(
+                "[Task][Schedule] "
+                f"object_idx={self.current_obj_idx} "
+                f"object={self.current_obj_path.split('/')[-1]} "
+                f"obj_counter={self.current_obj_episodes}/{self.episodes_per_obj} "
+                f"pose_id={self.current_pose_id} "
+                f"pose_counter={self.current_position_counter}/{self.position_switch_interval} "
+                f"pose_metric={self.pose_switch_metric} "
+                f"resampled={getattr(self, '_last_pose_resampled', False)} "
+                f"sampled_pos={sampled_str}"
+            )
         
     def step(self):
         """

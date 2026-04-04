@@ -1058,6 +1058,20 @@ class PickTaskController(BaseController):
                     "params_used": params_used,
                     "object_type": object_type,
                 }
+                sampled_object_position = state.get("sampled_object_position")
+                if sampled_object_position is not None:
+                    props["sampled_object_position"] = [float(x) for x in sampled_object_position[:3]]
+                props["collection_schedule"] = {
+                    "object_index": int(state.get("object_index", -1)),
+                    "object_episode_counter": int(state.get("object_episode_counter", 0)),
+                    "object_switch_interval": int(state.get("object_switch_interval", 0)),
+                    "object_switch_metric": state.get("object_switch_metric", "unknown"),
+                    "pose_id": int(state.get("pose_id", 0)),
+                    "pose_counter": int(state.get("pose_counter", 0)),
+                    "pose_switch_interval": int(state.get("pose_switch_interval", 0)),
+                    "pose_switch_metric": state.get("pose_switch_metric", "unknown"),
+                    "pose_resampled_this_reset": bool(state.get("pose_resampled_this_reset", False)),
+                }
                 if self._noise_enabled:
                     props["injected_noise"] = {k: (v.tolist() if hasattr(v, 'tolist') else v) for k, v in n.items()}
                     props["correction_gt"] = correction_gt
