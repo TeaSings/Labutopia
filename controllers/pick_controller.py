@@ -76,6 +76,13 @@ class PickTaskController(BaseController):
         self._lift_required_steps = int(getattr(getattr(cfg, 'pick', None), 'lift_required_success_steps', 10))
         # 物体倾倒检测：与本局「初始位姿」的世界旋转 R0 对比，相对转角超过阈值则整局重置；无矩阵时回退为竖直轴夹角
         _pick = getattr(cfg, "pick", None) or {}
+        self._default_pre_offset_x = float(getattr(_pick, "pre_offset_x", 0.05))
+        self._default_pre_offset_z = float(getattr(_pick, "pre_offset_z", 0.12))
+        self._default_after_offset_z = float(getattr(_pick, "after_offset_z", 0.25))
+        _default_euler = getattr(_pick, "end_effector_euler_deg", [0.0, 90.0, 25.0])
+        self._default_euler_deg = np.asarray(_default_euler, dtype=float).reshape(-1)
+        if self._default_euler_deg.size != 3:
+            self._default_euler_deg = np.array([0.0, 90.0, 25.0], dtype=float)
         self._tipped_detection_enabled = bool(getattr(_pick, "tipped_detection_enabled", True))
         self._tipped_max_tilt_deg = float(getattr(_pick, "tipped_max_tilt_deg", 72.0))
         self._tipped_baseline_delay_steps = int(getattr(_pick, "tipped_baseline_delay_steps", 0))
@@ -230,7 +237,7 @@ class PickTaskController(BaseController):
         self._vlm_recovery_steps = 0
 
     def _vlm_normalize_params(self, raw: dict, state: dict) -> dict:
-        euler = raw.get("euler_deg", [0.0, 90.0, 25.0])
+        euler = raw.get("euler_deg", self._default_euler_deg.tolist())
         euler_deg = np.array(euler[:3], dtype=float)
         gt = np.array(state["object_position"][:3], dtype=float)
         if raw.get("picking_position") is not None:
@@ -238,9 +245,9 @@ class PickTaskController(BaseController):
         else:
             pp = gt.copy()
         return {
-            "pre_offset_x": float(raw.get("pre_offset_x", 0.05)),
-            "pre_offset_z": float(raw.get("pre_offset_z", 0.12)),
-            "after_offset_z": float(raw.get("after_offset_z", 0.25)),
+            "pre_offset_x": float(raw.get("pre_offset_x", self._default_pre_offset_x)),
+            "pre_offset_z": float(raw.get("pre_offset_z", self._default_pre_offset_z)),
+            "after_offset_z": float(raw.get("after_offset_z", self._default_after_offset_z)),
             "euler_deg": euler_deg,
             "picking_position": pp,
         }
@@ -1014,16 +1021,16 @@ class PickTaskController(BaseController):
             if self._noise_enabled and self._episode_noise.get('picking_position') is not None:
                 picking_position = gt_position + self._episode_noise['picking_position']
             # 其他参数：无噪声时的默认值
-            pre_offset_x = 0.05
-            pre_offset_z = 0.12
-            after_offset_z = 0.25
-            euler_deg = np.array([0.0, 90.0, 25.0])
+            pre_offset_x = self._default_pre_offset_x
+            pre_offset_z = self._default_pre_offset_z
+            after_offset_z = self._default_after_offset_z
+            euler_deg = self._default_euler_deg.copy()
             if self._noise_enabled:
                 n = self._episode_noise
-                pre_offset_x = 0.05 + n['pre_offset_x']
-                pre_offset_z = 0.12 + n['pre_offset_z']
-                after_offset_z = 0.25 + n['after_offset_z']
-                euler_deg = np.array([0.0, 90.0, 25.0]) + n['euler_deg']
+                pre_offset_x = self._default_pre_offset_x + n['pre_offset_x']
+                pre_offset_z = self._default_pre_offset_z + n['pre_offset_z']
+                after_offset_z = self._default_after_offset_z + n['after_offset_z']
+                euler_deg = self._default_euler_deg + n['euler_deg']
             # VLM 训练数据：params_used 含实际使用的参数（含 picking_position），correction_gt 为朝向正确空间的修正量
             if not self._episode_properties_set and hasattr(self.data_collector, 'set_task_properties'):
                 n = self._episode_noise if self._noise_enabled else {}

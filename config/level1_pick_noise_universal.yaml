@@ -7,5 +7,11 @@ defaults:
 name: Level1_pick_noise_universal
 max_episodes: 50
 
+pick:
+  pre_offset_x: 0.05
+  pre_offset_z: 0.12
+  after_offset_z: 0.25
+  end_effector_euler_deg: [0.0, 90.0, 25.0]
+
 noise:
   enabled: true

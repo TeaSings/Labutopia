@@ -47,17 +47,31 @@ class BaseTask(ABC):
             print("[BaseTask] 错误：task.obj_paths 中所有 prim 在场景中均不存在，请检查 usd_path 或运行 scripts/list_scene_prims.py 验证")
             sys.exit(1)
         self.current_material_idx = 0
+        task_cfg = getattr(cfg, 'task', None)
         if len(self.obj_configs) != 0:
-            # 优先使用 task.successes_per_obj（每仪器成功 N 次后切换），否则按 max_episodes 均分
-            task_cfg = getattr(cfg, 'task', None)
-            if task_cfg is not None and hasattr(task_cfg, 'successes_per_obj') and task_cfg.successes_per_obj is not None:
-                self.episodes_per_obj = int(task_cfg.successes_per_obj)
+            # 兼容旧配置：默认按 success 切换；新配置可显式指定按 episode 切换。
+            switch_interval = None
+            self.object_switch_metric = str(getattr(task_cfg, 'object_switch_metric', 'success')).lower() if task_cfg is not None else 'success'
+            if task_cfg is not None and hasattr(task_cfg, 'object_switch_interval') and task_cfg.object_switch_interval is not None:
+                switch_interval = int(task_cfg.object_switch_interval)
+                if self.object_switch_metric not in ('success', 'episode'):
+                    self.object_switch_metric = 'episode'
+            elif task_cfg is not None and hasattr(task_cfg, 'successes_per_obj') and task_cfg.successes_per_obj is not None:
+                switch_interval = int(task_cfg.successes_per_obj)
+                self.object_switch_metric = 'success'
             else:
-                self.episodes_per_obj = int(cfg.max_episodes / len(self.obj_configs))
+                switch_interval = int(cfg.max_episodes / len(self.obj_configs))
+                self.object_switch_metric = 'success'
+            self.episodes_per_obj = max(1, switch_interval)
         else:
             self.episodes_per_obj = 0
+            self.object_switch_metric = 'success'
         self.current_obj_idx = 0
         self.current_obj_episodes = 0
+        self.position_switch_interval = max(1, int(getattr(task_cfg, 'position_switch_interval', 1) or 1)) if task_cfg is not None else 1
+        self.current_position_episodes = 0
+        self.current_obj_position = None
+        self.current_position_obj_idx = None
         
     def reset(self) -> None:
         """
@@ -250,6 +264,11 @@ class BaseTask(ABC):
                     UsdShade.Tokens.strongerThanDescendants
                 )
     
+    def _set_object_position_preserve_rotation(self, obj_path: str, position: np.ndarray) -> None:
+        rot_snap = self.object_utils.snapshot_object_xform_rotation(obj_path)
+        self.object_utils.set_object_position(object_path=obj_path, position=np.asarray(position, dtype=float))
+        self.object_utils.restore_object_xform_rotation(obj_path, rot_snap)
+
     def randomize_object_position(self, obj_path: str, position_range: Dict[str, list]) -> np.ndarray:
         """
         Randomize object position according to position range.
@@ -266,9 +285,7 @@ class BaseTask(ABC):
             np.random.uniform(position_range['y'][0], position_range['y'][1]),
             np.random.uniform(position_range['z'][0], position_range['z'][1])
         ])
-        rot_snap = self.object_utils.snapshot_object_xform_rotation(obj_path)
-        self.object_utils.set_object_position(object_path=obj_path, position=position)
-        self.object_utils.restore_object_xform_rotation(obj_path, rot_snap)
+        self._set_object_position_preserve_rotation(obj_path, position)
         return position
     
     def place_objects_with_visibility_management(self, current_obj_idx: int, far_distance: float = 10.0) -> Optional[str]:
@@ -296,7 +313,18 @@ class BaseTask(ABC):
             
             if prim.IsValid():
                 if i == current_obj_idx:
-                    self.randomize_object_position(obj_path, position_range)
+                    should_resample = (
+                        self.current_obj_position is None
+                        or self.current_position_obj_idx != current_obj_idx
+                        or self.current_position_episodes >= self.position_switch_interval
+                    )
+                    if should_resample:
+                        self.current_obj_position = self.randomize_object_position(obj_path, position_range)
+                        self.current_position_obj_idx = current_obj_idx
+                        self.current_position_episodes = 0
+                    else:
+                        self._set_object_position_preserve_rotation(obj_path, self.current_obj_position)
+                    self.current_position_episodes += 1
                     set_prim_visibility(prim, True)
                 else:
                     # Move non-current objects to far distance
@@ -410,10 +438,15 @@ class BaseTask(ABC):
         Args:
             success: Whether task completed successfully
         """
-        if success:
+        should_count_episode = success if self.object_switch_metric == 'success' else True
+        if should_count_episode:
             self.current_obj_episodes += 1
             if self.current_obj_episodes >= self.episodes_per_obj and len(self.obj_configs) > 0:
                 self.current_obj_idx = (self.current_obj_idx + 1) % len(self.obj_configs)
                 self.current_obj_episodes = 0
+                self.current_obj_position = None
+                self.current_position_obj_idx = None
+                self.current_position_episodes = 0
+        if success:
             if self.available_materials:
                 self.current_material_idx = (self.current_material_idx + 1) % len(self.available_materials)

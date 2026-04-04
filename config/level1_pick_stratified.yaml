@@ -1,0 +1,32 @@
+# Pick 分层采集：同一物体位姿连续多局（仅抓取参数加噪变化），再在同一 position_range 内重新采样位姿。
+# 用于「固定场景下积累成功/失败与纠错标签，再换位置做几何泛化」。
+#
+# 用法示例:
+#   python main.py --config-name level1_pick_stratified --headless --no-video --fast-sim
+#
+defaults:
+  - level1_pick_noise_universal
+  - _self_
+
+name: Level1_pick_stratified
+
+# 噪声：目标约 **20% 成功率**（分层固定位姿下易偏高，故偏激进；请以若干百局统计为准微调）
+# 调参：成功率仍高 → 略增 noise_scale 或 failure_bias_ratio；过低 → 反向微调
+noise:
+  enabled: true
+  pre_offset_x: [-0.05, 0.05]
+  pre_offset_z: [-0.05, 0.05]
+  after_offset_z: [-0.05, 0.05]
+  end_effector_euler_deg: [-12, 12]
+  picking_position_noise: [-0.035, 0.035]
+  noise_scale: 2.45
+  failure_bias_ratio: 0.92
+  noise_distribution: uniform   # 各参数在区间内均匀采样（非 edge_bias / Beta U 形）
+
+task:
+  stratified_collection: true
+  # 同一物体、同一 position_range：累计 **成功** 这么多次后，下次 reset 才在 range 内重新随机位姿。
+  successes_per_pose: 10
+  # 若未设 successes_per_pose，可改用按局数换姿（不论成败）：episodes_per_pose: 30
+
+max_episodes: 5000

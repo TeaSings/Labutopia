@@ -1,0 +1,52 @@
+# Pick 任务 - 全物体 uniform 噪声采集
+# 目标：
+# 1. 噪声使用 uniform 分布，而不是 edge_bias
+# 2. 当前物体位置每 10 个 episode 切换一次
+# 3. 当前物体类别每 150 个 episode 切换一次
+defaults:
+  - level1_pick_noise_universal
+  - _self_
+
+name: Level1_pick_noise_uniform_all_obj_pos10_obj150
+max_episodes: 99999  # 兜底；main.py 会按 object_switch_interval × 有效物体数自动结束
+
+task:
+  object_switch_metric: episode
+  object_switch_interval: 150
+  position_switch_interval: 10
+  obj_paths:
+    - path: "/World/conical_bottle02"
+      category: conical_bottle
+      position_range:
+        x: [0.2475, 0.3225]
+        y: [-0.04, 0.04]
+        z: [0.82, 0.82]
+    - path: "/World/beaker2"
+      category: beaker
+      position_range:
+        x: [0.2475, 0.3225]
+        y: [-0.04, 0.04]
+        z: [0.82, 0.82]
+    - path: "/World/graduated_cylinder_03"
+      category: graduated_cylinder
+      position_range:
+        x: [0.275, 0.325]
+        y: [0.025, 0.075]
+        z: [0.81, 0.81]
+    - path: "/World/volume_flask"
+      category: volume_flask
+      position_range:
+        x: [0.2475, 0.3225]
+        y: [-0.04, 0.04]
+        z: [0.82, 0.82]
+
+noise:
+  enabled: true
+  noise_distribution: uniform
+  noise_scale: 1.5
+  failure_bias_ratio: 1.0
+  pre_offset_x: [-0.04, 0.04]
+  pre_offset_z: [-0.04, 0.04]
+  after_offset_z: [-0.04, 0.04]
+  end_effector_euler_deg: [-10, 10]
+  picking_position_noise: [-0.02, 0.02]

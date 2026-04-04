@@ -252,14 +252,26 @@ def main():
                             shutil.move(output_path, dest_path)
                            
                 task_controller.reset()
-                # 停止条件：1) max_episodes 达到  2) successes_per_obj 模式下达到目标成功数
+                # 停止条件：
+                # 1) max_episodes 达到
+                # 2) success 切换模式下达到每类目标成功数
+                # 3) episode 切换模式下达到每类目标采集数
                 target_successes = None
+                target_episodes = None
                 if hasattr(cfg, 'task') and hasattr(cfg.task, 'successes_per_obj') and cfg.task.successes_per_obj is not None:
                     n_obj = len(getattr(task, 'obj_configs', []))
                     if n_obj > 0:
                         target_successes = int(cfg.task.successes_per_obj) * n_obj
+                if hasattr(cfg, 'task') and hasattr(cfg.task, 'object_switch_interval') and cfg.task.object_switch_interval is not None:
+                    switch_metric = str(getattr(cfg.task, 'object_switch_metric', 'episode')).lower()
+                    if switch_metric == 'episode':
+                        n_obj = len(getattr(task, 'obj_configs', []))
+                        if n_obj > 0:
+                            target_episodes = int(cfg.task.object_switch_interval) * n_obj
                 should_stop = task_controller.episode_num() >= cfg.max_episodes
                 if target_successes is not None and task_controller.success_count >= target_successes:
+                    should_stop = True
+                if target_episodes is not None and task_controller.episode_num() >= target_episodes:
                     should_stop = True
                 if should_stop:
                     task_controller.close()

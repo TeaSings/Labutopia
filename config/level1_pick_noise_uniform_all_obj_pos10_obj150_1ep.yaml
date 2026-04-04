@@ -1,0 +1,6 @@
+defaults:
+  - level1_pick_noise_uniform_all_obj_pos10_obj150
+  - _self_
+
+name: Level1_pick_noise_uniform_all_obj_pos10_obj150_1ep
+max_episodes: 1
