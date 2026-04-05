@@ -210,7 +210,6 @@ python3 -m py_compile tasks/base_task.py main.py controllers/pick_controller.py
 
 以下内容已经设计或写入本地代码，但还需要在远程机器上继续验证：
 
-- `stratified` 逻辑在远程机器上的真实行为是否完全符合预期
 - 新配置 `level1_pick_stratified_all_obj` 跑起来后，是否真的实现：
   - 同一 pose 下累计 `10` 次成功后再换 pose
   - 同一物体累计 `150` 个 episode 后再换到下一个物体
@@ -222,9 +221,152 @@ python3 -m py_compile tasks/base_task.py main.py controllers/pick_controller.py
 - 代码结构已准备
 - 配置方案已独立出来
 - stratified 主线已经在本地代码层面接通
-- 但完整远程实验结果还需要继续补充
+- 调度逻辑已经通过小规模 debug run 验证
+- 但完整远程正式实验结果还需要继续补充
 
-## 六、后续建议记录方式
+## 六、2026-04-04 最新补充：调度 debug 已验证通过
+
+本轮又新增了一步非常关键的验证：不是直接在正式强噪声配置上继续猜调度是否出错，而是专门新建了一个“只验证调度”的 debug 配置。
+
+新增文件：
+
+- [config/level1_pick_stratified_all_obj_debug.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified_all_obj_debug.yaml)
+- [config/level1_pick_stratified_all_obj_schedule_debug.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified_all_obj_schedule_debug.yaml)
+- [temp.py](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/temp.py)
+
+其中：
+
+- `level1_pick_stratified_all_obj_debug.yaml`
+  - 用较小阈值验证 object / pose 切换
+  - `object_switch_interval: 6`
+  - `episodes_per_pose: 3`
+- `level1_pick_stratified_all_obj_schedule_debug.yaml`
+  - 在上面基础上进一步关闭 `noise`
+  - 关闭 `tipped_detection`
+  - 目的是尽量减少 `skipped`，让调度顺序以最干净的形式呈现出来
+
+最近这轮 `schedule_debug` 的结果已经说明调度逻辑是正确的：
+
+- `written: 18`
+- `Object blocks` 为：
+  - `6 / 6 / 6`
+- `Pose blocks` 为：
+  - `3 / 3`
+- `schedule rows` 中：
+  - `obj_counter` 按 `0..5` 递增
+  - `pose_counter` 按 `0..2` 递增
+  - `resampled=True` 只出现在真正换 pose 的 reset 上
+
+这说明当前代码已经可以正确实现：
+
+- 按 episode 每 `3` 局切换 pose
+- 按 episode 每 `6` 局切换物体
+
+因此当前结论是：
+
+- `BaseTask` 这条调度主线已经通过验证
+- 不需要继续优先修调度代码
+- 之后再看到正式强噪声 run 中的 `Object blocks` 不整齐，不能直接判定为调度 bug
+
+这里还需要特别说明一个已经澄清的误区：
+
+- 正式强噪声配置下，会出现一部分 `skipped` episode
+- 这些 `skipped` 不会写入 `episode.jsonl`
+- 但调度内部计数仍然可能已经前进
+
+因此正式 run 的 written 数据会被“打散”，也就是：
+
+- 底层真实调度可能是连续的
+- 但 `episode.jsonl` 里因为缺失了被跳过的 episode，看起来会像块长度不整齐、甚至像是物体切换得更碎
+
+所以正式配置不应该再用“written block 是否完美整齐”作为唯一判断标准。
+
+## 七、当前最合理的下一步
+
+在调度 debug 已通过的前提下，接下来最合理的动作就是直接回到正式配置运行：
+
+- [config/level1_pick_stratified_all_obj.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified_all_obj.yaml)
+
+这一步的目标不再是验证调度逻辑，而是观察正式采集的整体统计结果，重点看：
+
+- 最终成功率是否稳定在 `20% ~ 40%`
+- 是否存在异常高的 `skipped`
+- 是否出现新的系统性异常
+
+按照当前代码逻辑，停止条件是：
+
+- 每个有效物体 `150` 个 written episode
+- 当前有效物体数大概率为 `3`
+
+所以正式 run 的 written 总量大约是：
+
+- `150 × 3 = 450`
+
+如果按“每条约 `20` 秒”粗估：
+
+- 不考虑 `skipped` 时，约 `450 × 20s = 9000s ≈ 2.5 小时`
+
+但由于 collect 模式下停止判断使用的是 `written episode` 数，而不是总尝试次数，所以如果正式 run 中仍有较多 `skipped`，真实墙钟时间会比 `2.5` 小时更长，实操上更合理的预估大约是：
+
+- `2.5 ~ 3.2 小时`
+
+如果后续第 4 个物体也被纳入有效对象，总时长还会进一步增加。
+
+## 八、2026-04-05 最新补充：正式 stratified 多物体结果已达到目标
+
+在远程机器上正式运行：
+
+- [config/level1_pick_stratified_all_obj.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified_all_obj.yaml)
+
+最终结果为：
+
+- `Success = 112/450 written`
+- `89 skipped`
+- `24.9% success`
+- 总运行时长日志显示约 `17713s`，约合 `4.9` 小时
+
+这组结果的意义比较明确：
+
+- 成功率已经稳定落在学长要求的 `20% ~ 40%` 区间内
+- 而且不是贴边，而是落在区间内部，当前可以作为这一阶段的正式结果
+- 结合此前已经通过的 `schedule_debug`，可以认为目前这条 `stratified + uniform noise + all_obj` 主线已经跑通
+
+另外，学长已经明确反馈：
+
+- 当前 `skipped` 较多属于正常现象
+
+因此目前不再需要继续围绕 `skipped` 做额外优化，也不建议继续微调成功率。当前更合理的做法是：
+
+- 冻结这版正式配置
+- 将结果补入汇报材料
+- 只在学长提出新目标后再进入下一轮参数调整
+
+基于这个结果，当前阶段可以认为已经完成的新增事项是：
+
+- `level1_pick_stratified_all_obj` 正式配置已经在远程跑出完整结果
+- 成功率控制目标已达成
+- 调度逻辑与正式统计结果两条线都已经闭环
+
+当前下一步工作的重心，不再是继续改控制参数，而是：
+
+- 整理结果与汇报材料
+- 同时把当前正式 YAML 配置整理得更清晰，减少多层继承带来的维护成本
+
+本轮还补做了一项配置整理工作：
+
+- 已将 [config/level1_pick_stratified_all_obj.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified_all_obj.yaml) 改写为自包含版本
+- 当前正式运行所依赖的关键参数已经集中写回同一个文件，包括：
+  - `task_type / controller_type / mode / usd_path`
+  - `task` 中的 `workspace_range / stratified_collection / successes_per_pose / object_switch_interval / obj_paths`
+  - `cameras / robot / collector`
+  - `pick` 中的默认抓取参数、成功判定参数、correction 相关参数
+  - `noise` 中的正式噪声范围、`noise_scale`、`failure_bias_ratio`、`noise_distribution`
+- 这样后续如果继续维护或向学长解释当前正式配置，不需要再沿着
+  `level1_pick_noise_universal -> level1_pick_stratified -> level1_pick_stratified_all_obj`
+  这条链来回追参数
+- `level1_pick_stratified_all_obj_1ep.yaml` 与 debug 配置仍然可以继续继承这份主配置，保持调试入口不变
+
+## 九、后续建议记录方式
 
 为了便于下周五汇报，建议后续继续按下面的方式往这份文档补充：
 
@@ -239,11 +381,13 @@ python3 -m py_compile tasks/base_task.py main.py controllers/pick_controller.py
 
 这样在汇报时可以避免把“已经跑出来的结果”和“已经设计好但还没在远程完整验证的方案”混在一起。
 
-## 七、下周汇报时可以直接讲的重点
+## 十、下周汇报时可以直接讲的重点
 
 - 目前 `pick` 的 clean baseline 已经稳定，说明系统链路本身不是主要问题
 - 带噪声采集已经能够稳定输出结果，当前主要矛盾转为噪声分布与采集协议设计
 - 本周最大的变化不是单个参数调优，而是把调参思路从“提高成功率”转成“控制数据难度分布”
 - 为了适应新的采集要求，已经开始把实验入口统一到独立 YAML 配置中，并对任务层调度逻辑进行了小范围扩展
 - 最近又根据学长新给出的 `stratified` 配置，进一步把 pose 分层采集逻辑补到代码里
-- 下一步主要工作将是把这套 stratified 多物体配置同步到远程机器，并验证采集节奏与成功率区间
+- 之后又用单独的 schedule debug 配置验证了调度逻辑本身是正确的
+- 现在 `level1_pick_stratified_all_obj` 已经在远程跑出正式结果：`112/450 written`、`89 skipped`、`24.9% success`
+- 这说明当前主线配置已经达到“成功率控制在 `20% ~ 40%`”的目标

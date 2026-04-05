@@ -1,14 +1,22 @@
 # 调度逻辑纯验证版：
 # - 目标是验证「按 episode 切换 pose / object」是否严格生效
+# - 直接继承正式主配置，避免 debug -> debug 的多层链
 # - 关闭参数噪声，尽量减少 skipped 对 written block 的打散
 # - 不是正式采集配置
 
 defaults:
-  - level1_pick_stratified_all_obj_debug
+  - level1_pick_stratified_all_obj
   - _self_
 
 name: Level1_pick_stratified_all_obj_schedule_debug
 max_episodes: 18
+
+task:
+  debug_collection_schedule: true
+  object_switch_metric: episode
+  object_switch_interval: 6
+  successes_per_pose: null
+  episodes_per_pose: 3
 
 noise:
   enabled: false

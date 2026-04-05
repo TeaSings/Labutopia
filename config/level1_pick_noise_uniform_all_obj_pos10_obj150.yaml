@@ -1,16 +1,42 @@
-# Pick 任务 - 全物体 uniform 噪声采集
+# Pick 任务 - 全物体 uniform 噪声采集（旧方案，自包含版）
 # 目标：
 # 1. 噪声使用 uniform 分布，而不是 edge_bias
 # 2. 当前物体位置每 10 个 episode 切换一次
 # 3. 当前物体类别每 150 个 episode 切换一次
+# 说明：
+# - 该方案早于 stratified 主线
+# - 仍保留作历史实验配置，但不再继承 level1_pick_noise_universal
+
 defaults:
-  - level1_pick_noise_universal
   - _self_
 
 name: Level1_pick_noise_uniform_all_obj_pos10_obj150
-max_episodes: 99999  # 兜底；main.py 会按 object_switch_interval × 有效物体数自动结束
+
+task_type: "pick"
+controller_type: "pick"
+mode: "collect"
+usd_path: "assets/chemistry_lab/lab_001/lab_001.usd"
+max_episodes: 99999
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": "camera_1_rgb", "camera_2_rgb": "camera_2_rgb"}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
 
 task:
+  max_steps: 800
+  camera_warmup_frames: 45
+  workspace_range:
+    x: [0.15, 0.50]
+    y: [-0.25, 0.25]
+    z: [0.75, 0.98]
   object_switch_metric: episode
   object_switch_interval: 150
   position_switch_interval: 10
@@ -40,6 +66,63 @@ task:
         y: [-0.04, 0.04]
         z: [0.82, 0.82]
 
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    translation: [2, 0, 2]
+    resolution: [256, 256]
+    focal_length: 6
+    orientation: [0.61237, 0.35355, 0.35355, 0.61237]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    translation: [0.1, 0, 2.5]
+    resolution: [256, 256]
+    focal_length: 6
+    orientation: [0.70711, 0, 0, -0.70711]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [256, 256]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  position: [-0.4, -0.0, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+  save_frames: -1
+  cache_stride: 20
+
+pick:
+  pre_offset_x: 0.05
+  pre_offset_z: 0.12
+  after_offset_z: 0.25
+  end_effector_euler_deg: [0.0, 90.0, 25.0]
+  tipped_detection_enabled: true
+  tipped_max_tilt_deg: 72.0
+  tipped_baseline_delay_steps: 0
+  tipped_local_up_axis: [0.0, 0.0, 1.0]
+  tipped_bbox_fallback_enabled: true
+  tipped_bbox_min_initial_verticality: 1.18
+  tipped_bbox_verticality_factor: 0.50
+  lift_correction_enabled: true
+  required_success_steps: 15
+  lift_required_success_steps: 10
+  success_pool_max: 500
+  correction_steps_count: 3
+  correction_alpha: 0.5
+  p_ref_method: mean
+  correction_enrich_unit_magnitude: true
+  correction_suggested_max_picking_norm: 0.02
+  correction_suggested_max_euler_l2_deg: 8.0
+  correction_suggested_max_offset_abs: 0.06
+  correction_step_max_picking_norm: 0.02
+
 noise:
   enabled: true
   noise_distribution: uniform
@@ -50,3 +133,10 @@ noise:
   after_offset_z: [-0.04, 0.04]
   end_effector_euler_deg: [-10, 10]
   picking_position_noise: [-0.02, 0.02]
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

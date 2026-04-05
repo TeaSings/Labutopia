@@ -1,19 +1,45 @@
-# Pick 分层采集：多物体版本
-# 语义：
-# 1. 同一物体在同一 pose 下累计 10 次成功后，再在对应 position_range 内重新采样 pose
-# 2. 同一物体累计 150 个 episode 后，切换到下一个物体
-# 3. 噪声分布使用 uniform，目标成功率约 20% ~ 40%
+# Pick 分层采集：多物体正式配置（自包含版）
+# 目的：
+# 1. 不再依赖 level1_pick_noise_universal -> level1_pick_stratified 这条继承链
+# 2. 将当前正式运行所需参数集中写在同一文件中，便于维护与汇报
+# 3. 保持与已达标结果一致：112/450 written, 89 skipped, 24.9% success
 
 defaults:
-  - level1_pick_stratified
   - _self_
 
 name: Level1_pick_stratified_all_obj
+
+task_type: "pick"
+controller_type: "pick"
+mode: "collect"
+usd_path: "assets/chemistry_lab/lab_001/lab_001.usd"
+
+# 兜底上限；main.py 会按 object_switch_interval × 有效物体数提前停止
 max_episodes: 99999
 
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": "camera_1_rgb", "camera_2_rgb": "camera_2_rgb"}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
 task:
+  max_steps: 800
+  camera_warmup_frames: 45
+  workspace_range:
+    x: [0.15, 0.50]
+    y: [-0.25, 0.25]
+    z: [0.75, 0.98]
   stratified_collection: true
+  # 同一物体、同一 pose 下累计 10 次成功后，再重新采样 pose
   successes_per_pose: 10
+  # 同一物体累计 150 个 written episode 后切换到下一类物体
   object_switch_metric: episode
   object_switch_interval: 150
   obj_paths:
@@ -41,3 +67,83 @@ task:
         x: [0.21, 0.36]
         y: [-0.08, 0.08]
         z: [0.82, 0.82]
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    translation: [2, 0, 2]
+    resolution: [256, 256]
+    focal_length: 6
+    orientation: [0.61237, 0.35355, 0.35355, 0.61237]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    translation: [0.1, 0, 2.5]
+    resolution: [256, 256]
+    focal_length: 6
+    orientation: [0.70711, 0, 0, -0.70711]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [256, 256]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  position: [-0.4, -0.0, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+  save_frames: -1
+  cache_stride: 20
+
+pick:
+  # 当前正式 pick baseline，供 controller 直接读取
+  pre_offset_x: 0.05
+  pre_offset_z: 0.12
+  after_offset_z: 0.25
+  end_effector_euler_deg: [0.0, 90.0, 25.0]
+
+  # 倾倒检测与成功判定
+  tipped_detection_enabled: true
+  tipped_max_tilt_deg: 72.0
+  tipped_baseline_delay_steps: 0
+  tipped_local_up_axis: [0.0, 0.0, 1.0]
+  tipped_bbox_fallback_enabled: true
+  tipped_bbox_min_initial_verticality: 1.18
+  tipped_bbox_verticality_factor: 0.50
+  lift_correction_enabled: true
+  required_success_steps: 15
+  lift_required_success_steps: 10
+
+  # 成功池与 correction
+  success_pool_max: 500
+  correction_steps_count: 3
+  correction_alpha: 0.5
+  p_ref_method: mean
+  correction_enrich_unit_magnitude: true
+  correction_suggested_max_picking_norm: 0.02
+  correction_suggested_max_euler_l2_deg: 8.0
+  correction_suggested_max_offset_abs: 0.06
+  correction_step_max_picking_norm: 0.02
+
+noise:
+  enabled: true
+  pre_offset_x: [-0.05, 0.05]
+  pre_offset_z: [-0.05, 0.05]
+  after_offset_z: [-0.05, 0.05]
+  end_effector_euler_deg: [-12, 12]
+  picking_position_noise: [-0.035, 0.035]
+  noise_scale: 2.45
+  failure_bias_ratio: 0.92
+  noise_distribution: uniform
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
