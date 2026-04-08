@@ -1,0 +1,48 @@
+# Pick 分层采集：5 物体泛化版
+# 用途：
+# 1. 在当前正式多物体配置基础上，加入 conical_bottle03 / conical_bottle04
+# 2. 用于测试从 3 类扩展到 5 个实例后的 pick 泛化表现
+# 3. 不改当前已达标的正式配置，只作为新实验分支
+
+defaults:
+  - level1_pick_stratified_all_obj
+  - _self_
+
+name: Level1_pick_stratified_all_obj_5obj
+max_episodes: 99999
+
+task:
+  # 每个有效物体 150 个 written episode，5 物体总量约 750 written
+  object_switch_metric: episode
+  object_switch_interval: 150
+  obj_paths:
+    - path: "/World/conical_bottle02"
+      category: conical_bottle
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
+    - path: "/World/conical_bottle03"
+      category: conical_bottle
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
+    - path: "/World/conical_bottle04"
+      category: conical_bottle
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
+    - path: "/World/beaker2"
+      category: beaker
+      position_range:
+        x: [0.21, 0.36]
+        y: [-0.08, 0.08]
+        z: [0.82, 0.82]
+    - path: "/World/graduated_cylinder_03"
+      category: graduated_cylinder
+      position_range:
+        x: [0.25, 0.35]
+        y: [0.0, 0.1]
+        z: [0.81, 0.81]
