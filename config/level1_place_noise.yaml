@@ -1,0 +1,21 @@
+defaults:
+  - level1_place
+  - _self_
+
+name: Level1_place_noise
+
+collector:
+  compression: gzip
+  save_frames: -1
+  cache_stride: 20
+
+# place 任务先只在放置阶段加噪；pick 子阶段保持 clean baseline，避免失败来源混杂。
+noise:
+  enabled: true
+  place_position_noise: [-0.03, 0.03]
+  pre_place_z: [-0.04, 0.04]
+  place_offset_z: [-0.03, 0.03]
+  end_effector_euler_deg: [-10, 10]
+  noise_scale: 1.0
+  failure_bias_ratio: 0.0
+  noise_distribution: uniform

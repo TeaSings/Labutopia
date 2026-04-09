@@ -14,7 +14,7 @@ class Phase(Enum):
 
 class PlaceTaskController(BaseController):
     def __init__(self, cfg, robot):
-        """Initialize the pick and pour task controller.
+        """Initialize the pick and place task controller.
         
         Args:
             cfg: Configuration object containing controller settings
@@ -55,10 +55,37 @@ class PlaceTaskController(BaseController):
             "xyz",
             np.radians(self._load_euler_deg(pick_cfg, "end_effector_euler_deg", [0.0, 90.0, 30.0])),
         ).as_quat()
+        self._default_place_euler_deg = self._load_euler_deg(
+            place_cfg, "end_effector_euler_deg", [0.0, 90.0, 20.0]
+        )
         self._place_end_effector_orientation = R.from_euler(
             "xyz",
-            np.radians(self._load_euler_deg(place_cfg, "end_effector_euler_deg", [0.0, 90.0, 20.0])),
+            np.radians(self._default_place_euler_deg),
         ).as_quat()
+
+        self._episode_noise = {}
+        self._episode_properties_set = False
+        self._last_params_used = None
+        self._last_baseline_correction = None
+
+        noise_cfg = getattr(cfg, "noise", None)
+        if noise_cfg and getattr(noise_cfg, "enabled", False):
+            self._noise_enabled = True
+            self._noise_scale = float(getattr(noise_cfg, "noise_scale", 1.0))
+            self._failure_bias_ratio = float(getattr(noise_cfg, "failure_bias_ratio", 0.0))
+            self._noise_distribution = str(getattr(noise_cfg, "noise_distribution", "uniform"))
+            self._noise_range = {
+                "place_position": list(getattr(noise_cfg, "place_position_noise", [-0.03, 0.03])),
+                "pre_place_z": list(getattr(noise_cfg, "pre_place_z", [-0.04, 0.04])),
+                "place_offset_z": list(getattr(noise_cfg, "place_offset_z", [-0.03, 0.03])),
+                "euler_deg": list(getattr(noise_cfg, "end_effector_euler_deg", [-10.0, 10.0])),
+            }
+        else:
+            self._noise_enabled = False
+
+        if getattr(cfg, "mode", None) != "collect":
+            self._noise_enabled = False
+
         super().__init__(cfg, robot)
         self.initial_position = None
         self.initial_size = None
@@ -91,6 +118,142 @@ class PlaceTaskController(BaseController):
         if values.size != 3:
             return np.asarray(default, dtype=float)
         return values
+
+    @staticmethod
+    def _get_object_type(state):
+        obj_category = str(state.get("object_category", "") or "").strip()
+        if obj_category:
+            return obj_category
+        object_name = str(state.get("object_name", "") or "").strip()
+        if object_name:
+            return re.sub(r"\d+", "", object_name).replace("_", " ").replace("  ", " ").strip().lower()
+        return "unknown"
+
+    def _sample_noise(self):
+        """Sample one place-stage noise packet per episode."""
+        if not self._noise_enabled:
+            self._episode_noise = {}
+            return
+
+        if self._failure_bias_ratio > 0 and np.random.random() < self._failure_bias_ratio:
+            scale = self._noise_scale
+        else:
+            scale = 1.0
+        dist = getattr(self, "_noise_distribution", "uniform")
+
+        def sample_in_range(lo, hi):
+            if dist == "edge_bias":
+                u = np.random.beta(0.5, 0.5)
+                return lo + (hi - lo) * u
+            return np.random.uniform(lo, hi)
+
+        def scaled_range(key):
+            lo, hi = self._noise_range[key][0], self._noise_range[key][1]
+            mid = (lo + hi) / 2
+            half = (hi - lo) / 2 * scale
+            return mid - half, mid + half
+
+        self._episode_noise = {
+            "place_position": np.array(
+                [sample_in_range(*scaled_range("place_position")) for _ in range(3)],
+                dtype=float,
+            ),
+            "pre_place_z": float(sample_in_range(*scaled_range("pre_place_z"))),
+            "place_offset_z": float(sample_in_range(*scaled_range("place_offset_z"))),
+            "euler_deg": np.array(
+                [sample_in_range(*scaled_range("euler_deg")) for _ in range(3)],
+                dtype=float,
+            ),
+        }
+
+    @staticmethod
+    def _snapshot_place_state_for_task_props(state):
+        snapshot = {}
+        if state.get("object_position") is not None:
+            snapshot["object_position"] = [float(x) for x in state["object_position"][:3]]
+        if state.get("target_position") is not None:
+            snapshot["target_position"] = [float(x) for x in state["target_position"][:3]]
+        return snapshot
+
+    def _build_place_params(self, state):
+        """Build the actual place-stage parameters used this episode."""
+        target_position = np.array(state["target_position"][:3], dtype=float)
+        place_position = target_position.copy()
+        pre_place_z = self._place_pre_place_z
+        place_offset_z = self._place_offset_z
+        euler_deg = self._default_place_euler_deg.copy()
+
+        correction_gt = None
+        if self._noise_enabled:
+            if not self._episode_noise:
+                self._sample_noise()
+            n = self._episode_noise
+            place_position = target_position + n["place_position"]
+            pre_place_z += n["pre_place_z"]
+            place_offset_z += n["place_offset_z"]
+            euler_deg = euler_deg + n["euler_deg"]
+            correction_gt = {
+                "place_position_delta": (-n["place_position"]).tolist(),
+                "pre_place_z": -float(n["pre_place_z"]),
+                "place_offset_z": -float(n["place_offset_z"]),
+                "euler_deg": (-n["euler_deg"]).tolist(),
+            }
+
+        params_used = {
+            "place_position": place_position.tolist(),
+            "pre_place_z": float(pre_place_z),
+            "place_offset_z": float(place_offset_z),
+            "euler_deg": euler_deg.tolist(),
+        }
+        end_effector_orientation = R.from_euler("xyz", np.radians(euler_deg)).as_quat()
+        return params_used, correction_gt, place_position, end_effector_orientation
+
+    def _maybe_set_place_task_properties(self, state, params_used, correction_gt):
+        if self._episode_properties_set or not hasattr(self.data_collector, "set_task_properties"):
+            return
+
+        props = {
+            "action_type": "place",
+            "params_used": params_used,
+            "object_type": self._get_object_type(state),
+            "source_object_name": state.get("object_name"),
+            "target_object_name": state.get("target_name"),
+        }
+        sampled_object_position = state.get("sampled_object_position")
+        if sampled_object_position is not None:
+            props["sampled_object_position"] = [float(x) for x in sampled_object_position[:3]]
+        props.update(self._snapshot_place_state_for_task_props(state))
+
+        if self._noise_enabled:
+            props["injected_noise"] = {
+                key: (value.tolist() if hasattr(value, "tolist") else value)
+                for key, value in self._episode_noise.items()
+            }
+            props["correction_gt"] = correction_gt
+
+        self.data_collector.set_task_properties(props)
+        self._episode_properties_set = True
+        self._last_params_used = dict(params_used)
+        self._last_baseline_correction = dict(correction_gt) if correction_gt else None
+
+    def _finalize_collect_episode(self, state, is_success):
+        if self._episode_properties_set and hasattr(self.data_collector, "update_task_properties"):
+            updates = {
+                "is_success": bool(is_success),
+                **self._snapshot_place_state_for_task_props(state),
+            }
+            if not is_success and self._last_baseline_correction:
+                updates["correction_gt"] = dict(self._last_baseline_correction)
+            self.data_collector.update_task_properties(updates)
+
+        if self._episode_properties_set:
+            self.data_collector.write_cached_data(state["joint_positions"][:-1])
+        else:
+            self.data_collector.clear_cache()
+
+        self._last_success = bool(is_success)
+        self.current_phase = Phase.FINISHED
+        return None, True, bool(is_success)
 
     def _init_collect_mode(self, cfg, robot):
         """Initialize controller for data collection mode."""
@@ -125,10 +288,14 @@ class PlaceTaskController(BaseController):
         self.current_phase = Phase.PICKING
         self.initial_position = None
         self.initial_size = None
+        self._episode_properties_set = False
+        self._last_params_used = None
+        self._last_baseline_correction = None
         self.pick_controller.reset(events_dt=self._pick_events_dt)
         if self.mode == "collect":
             self.active_controller = self.pick_controller
             self.place_controller.reset(events_dt=self._place_events_dt)
+            self._sample_noise()
         else:
             self.inference_engine.reset()
 
@@ -192,14 +359,16 @@ class PlaceTaskController(BaseController):
                     after_offset_z=self._pick_after_offset_z,
                 )
             else:
+                params_used, correction_gt, place_position, place_orientation = self._build_place_params(state)
+                self._maybe_set_place_task_properties(state, params_used, correction_gt)
                 action = self.place_controller.forward(
-                    place_position = state['target_position'],
+                    place_position=place_position,
                     current_joint_positions=state['joint_positions'],
                     gripper_control=self.gripper_control,
-                    end_effector_orientation=self._place_end_effector_orientation,
+                    end_effector_orientation=place_orientation,
                     gripper_position=state['gripper_position'],
-                    pre_place_z=self._place_pre_place_z,
-                    place_offset_z=self._place_offset_z,
+                    pre_place_z=params_used["pre_place_z"],
+                    place_offset_z=params_used["place_offset_z"],
                     place_position_threshold=self._place_release_position_threshold,
                     retreat_offset_x=self._place_retreat_offset_x,
                     retreat_offset_z=self._place_retreat_offset_z,
@@ -221,16 +390,21 @@ class PlaceTaskController(BaseController):
                 return None, False, False
             elif self.current_phase == Phase.PLACING:
                 print("Place task success!")
-                self.data_collector.write_cached_data(state['joint_positions'][:-1])
-                self._last_success = True
-                self.current_phase = Phase.FINISHED
-                return None, True, True
+                return self._finalize_collect_episode(state, True)
             else:
                 print(f"{self.current_phase.value} task failed!")
-                self.data_collector.clear_cache()
-                self._last_success = False
-                self.current_phase = Phase.FINISHED
-                return None, True, False
+                return self._finalize_collect_episode(state, False)
+
+        if self.current_phase == Phase.PICKING:
+            print("Pick task failed before entering place phase.")
+            self.data_collector.clear_cache()
+            self._last_success = False
+            self.current_phase = Phase.FINISHED
+            return None, True, False
+
+        if self.current_phase == Phase.PLACING:
+            print("Place task failed!")
+            return self._finalize_collect_episode(state, False)
         
         return None, False, False
 
