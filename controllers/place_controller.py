@@ -20,10 +20,6 @@ class PlaceTaskController(BaseController):
             cfg: Configuration object containing controller settings
             robot: Robot instance to control
         """
-        super().__init__(cfg, robot)
-        self.initial_position = None
-        self.initial_size = None
-        self.current_phase = Phase.PICKING
         pick_cfg = getattr(cfg, "pick", None)
         place_cfg = getattr(cfg, "place", None)
 
@@ -63,6 +59,10 @@ class PlaceTaskController(BaseController):
             "xyz",
             np.radians(self._load_euler_deg(place_cfg, "end_effector_euler_deg", [0.0, 90.0, 20.0])),
         ).as_quat()
+        super().__init__(cfg, robot)
+        self.initial_position = None
+        self.initial_size = None
+        self.current_phase = Phase.PICKING
 
     @staticmethod
     def _get_cfg_value(cfg_section, key, default):
