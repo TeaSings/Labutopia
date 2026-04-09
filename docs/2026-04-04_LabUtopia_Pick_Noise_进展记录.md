@@ -366,7 +366,164 @@ python3 -m py_compile tasks/base_task.py main.py controllers/pick_controller.py
   这条链来回追参数
 - `level1_pick_stratified_all_obj_1ep.yaml` 与 debug 配置仍然可以继续继承这份主配置，保持调试入口不变
 
-## 九、后续建议记录方式
+## 九、2026-04-09 最新补充：5 物体泛化版已跑通并固定 noise_scale
+
+在前一阶段 `3` 物体正式配置已经达标之后，又进一步尝试了 5 物体泛化版本：
+
+- [config/level1_pick_stratified_all_obj_5obj.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified_all_obj_5obj.yaml)
+
+这版在原有 `3` 个物体基础上，新增了：
+
+- `conical_bottle03`
+- `conical_bottle04`
+
+形成 5 物体集合：
+
+- `conical_bottle02`
+- `conical_bottle03`
+- `conical_bottle04`
+- `beaker2`
+- `graduated_cylinder_03`
+
+先前使用较强噪声时，5 物体版跑出的结果是：
+
+- `142/750 written`
+- `105 skipped`
+- `18.9% success`
+
+这个结果说明：
+
+- 物体扩展后整体难度确实上升了
+- 但并不是彻底失控，而是只比目标区间下沿略低
+
+随后仅对噪声强度做了很小的调整：
+
+- `noise_scale: 2.45 -> 2.35`
+
+在保持其余参数不变的情况下，再次运行 5 物体正式配置，结果为：
+
+- `179/750 written`
+- `107 skipped`
+- `23.9% success`
+- 总运行时长日志显示约 `28426s`
+
+这组结果意味着：
+
+- 5 物体版已经重新回到目标区间 `20% ~ 40%`
+- 而且回到区间内部，不需要再继续做更激进的参数调整
+- 当前最合理的做法是将 5 物体配置固定在 `noise_scale: 2.35`
+
+因此，本轮之后可以认为：
+
+- `3` 物体正式主线已经达标
+- `5` 物体泛化版也已经达标
+- 当前不需要继续围绕这条 5 物体配置做新一轮参数搜索，除非学长提出新的目标
+
+## 十、当前自定义配置文件用途速查
+
+为了避免后续继续在一批名字接近、继承关系复杂的 YAML 之间来回跳转，当前这条自定义配置链可以按下面理解：
+
+### 1. 当前正式主配置
+
+- [config/level1_pick_stratified_all_obj.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified_all_obj.yaml)
+  - 用途：当前正式多物体 `stratified` 采集配置
+  - 特点：
+    - 自包含
+    - `successes_per_pose: 10`
+    - `object_switch_interval: 150`
+    - 使用 `uniform` 噪声
+  - 当前已验证正式结果：
+    - `112/450 written`
+    - `89 skipped`
+    - `24.9% success`
+
+### 2. 正式配置的冒烟测试版本
+
+- [config/level1_pick_stratified_all_obj_1ep.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified_all_obj_1ep.yaml)
+  - 用途：正式多物体配置的 `1ep` 冒烟测试
+  - 适用场景：
+    - 刚改完代码或配置后先确认能否启动
+    - 不用于正式统计
+
+### 3. 调度逻辑快速验证版
+
+- [config/level1_pick_stratified_all_obj_debug.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified_all_obj_debug.yaml)
+  - 用途：快速检查 object / pose 切换节奏是否生效
+  - 特点：
+    - 直接继承正式主配置
+    - 将 `object_switch_interval` 缩小到 `6`
+    - 将 `episodes_per_pose` 设为 `3`
+    - 保留 `noise`，因此 written 结果仍可能被 `skipped` 打散
+  - 适用场景：
+    - 调度逻辑初步联调
+    - 不是最干净的验证版
+
+### 4. 调度逻辑纯验证版
+
+- [config/level1_pick_stratified_all_obj_schedule_debug.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified_all_obj_schedule_debug.yaml)
+  - 用途：最干净地验证调度逻辑
+  - 特点：
+    - 直接继承正式主配置
+    - `object_switch_interval: 6`
+    - `episodes_per_pose: 3`
+    - `noise.enabled: false`
+    - `pick.tipped_detection_enabled: false`
+  - 这版已经验证通过：
+    - `Object blocks = 6 / 6 / 6`
+    - `Pose blocks = 3 / 3`
+  - 适用场景：
+    - 当怀疑调度逻辑有问题时，优先跑这版
+
+### 5. 单物体 stratified 主配置
+
+- [config/level1_pick_stratified.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified.yaml)
+  - 用途：单物体 `stratified` 采集主配置
+  - 特点：
+    - 自包含
+    - 保留完整 `pick / noise / task / collector` 参数
+    - 适合后续若要回到“单物体分层采集”主线时使用
+
+### 6. 旧方案保留配置
+
+- [config/level1_pick_noise_uniform_all_obj_pos10_obj150.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_noise_uniform_all_obj_pos10_obj150.yaml)
+  - 用途：更早一版“uniform + 每 10 个 episode 换位置 + 每 150 个 episode 换物体”的历史方案
+  - 特点：
+    - 已改为自包含
+    - 不再是当前主线
+    - 与现在的 `stratified` 方案不同，它是按 episode 固定换位置，不是按 `successes_per_pose`
+  - 适用场景：
+    - 回顾早期实验
+    - 与当前 `stratified` 方案做对照
+
+- [config/level1_pick_noise_uniform_all_obj_pos10_obj150_1ep.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_noise_uniform_all_obj_pos10_obj150_1ep.yaml)
+  - 用途：上面这套旧方案的 `1ep` 冒烟测试版本
+
+### 7. 5 物体泛化版
+
+- [config/level1_pick_stratified_all_obj_5obj.yaml](/Users/chensanya/Library/CloudStorage/OneDrive-bupt.cn/paper/LabUtopia/config/level1_pick_stratified_all_obj_5obj.yaml)
+  - 用途：在当前正式多物体主配置基础上，增加 `conical_bottle03 / conical_bottle04`，测试 pick 泛化能力
+  - 特点：
+    - 直接继承正式主配置
+    - 5 物体集合：`conical_bottle02 / 03 / 04 + beaker2 + graduated_cylinder_03`
+    - 当前固定 `noise_scale: 2.35`
+  - 当前已验证结果：
+    - `179/750 written`
+    - `107 skipped`
+    - `23.9% success`
+  - 结论：
+    - 已回到目标区间
+    - 当前可以作为 5 物体泛化版的稳定结果
+
+### 8. 当前配置链整理后的原则
+
+目前这条自定义配置链已经整理成下面这个规则：
+
+- 正式主配置尽量自包含，不再挂在 `level1_pick_noise_universal` 上
+- `_1ep` 配置只负责把 `max_episodes` 缩到 `1`
+- `debug` 配置只负责改动验证逻辑需要的最小字段
+- 如果以后新增配置，优先基于当前正式主配置扩展，而不是再回到旧的 `level1_pick_noise_universal` 继承链
+
+## 十一、后续建议记录方式
 
 为了便于下周五汇报，建议后续继续按下面的方式往这份文档补充：
 
@@ -381,7 +538,7 @@ python3 -m py_compile tasks/base_task.py main.py controllers/pick_controller.py
 
 这样在汇报时可以避免把“已经跑出来的结果”和“已经设计好但还没在远程完整验证的方案”混在一起。
 
-## 十、下周汇报时可以直接讲的重点
+## 十二、下周汇报时可以直接讲的重点
 
 - 目前 `pick` 的 clean baseline 已经稳定，说明系统链路本身不是主要问题
 - 带噪声采集已经能够稳定输出结果，当前主要矛盾转为噪声分布与采集协议设计
@@ -391,3 +548,4 @@ python3 -m py_compile tasks/base_task.py main.py controllers/pick_controller.py
 - 之后又用单独的 schedule debug 配置验证了调度逻辑本身是正确的
 - 现在 `level1_pick_stratified_all_obj` 已经在远程跑出正式结果：`112/450 written`、`89 skipped`、`24.9% success`
 - 这说明当前主线配置已经达到“成功率控制在 `20% ~ 40%`”的目标
+- 随后又扩展到了 5 物体泛化版，并通过把 `noise_scale` 轻微调到 `2.35`，得到 `179/750 written`、`107 skipped`、`23.9% success`
