@@ -16,6 +16,6 @@ noise:
   pre_place_z: [-0.04, 0.04]
   place_offset_z: [-0.03, 0.03]
   end_effector_euler_deg: [-10, 10]
-  noise_scale: 1.0
-  failure_bias_ratio: 0.0
-  noise_distribution: uniform
+  noise_scale: 2.0
+  failure_bias_ratio: 0.9
+  noise_distribution: edge_bias
