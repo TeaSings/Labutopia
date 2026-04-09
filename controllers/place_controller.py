@@ -24,6 +24,73 @@ class PlaceTaskController(BaseController):
         self.initial_position = None
         self.initial_size = None
         self.current_phase = Phase.PICKING
+        pick_cfg = getattr(cfg, "pick", None)
+        place_cfg = getattr(cfg, "place", None)
+
+        self._pick_events_dt = self._load_sequence(
+            place_cfg, "pick_events_dt", [0.002, 0.002, 0.005, 0.02, 0.05, 0.01, 0.02], expected_len=7
+        )
+        self._place_events_dt = self._load_sequence(
+            place_cfg, "place_events_dt", [0.005, 0.01, 0.08, 0.05, 0.01, 0.1], expected_len=6
+        )
+        self._pick_pre_offset_x = float(self._get_cfg_value(pick_cfg, "pre_offset_x", 0.05))
+        self._pick_pre_offset_z = float(self._get_cfg_value(pick_cfg, "pre_offset_z", 0.05))
+        self._pick_after_offset_z = float(self._get_cfg_value(pick_cfg, "after_offset_z", 0.15))
+        self._pick_success_min_height_delta = float(
+            self._get_cfg_value(place_cfg, "pick_success_min_height_delta", 0.10)
+        )
+        self._place_success_xy_threshold = float(
+            self._get_cfg_value(place_cfg, "place_success_xy_threshold", 0.05)
+        )
+        self._place_success_z_threshold = float(
+            self._get_cfg_value(place_cfg, "place_success_z_threshold", 0.05)
+        )
+        self._place_position_threshold = float(
+            self._get_cfg_value(place_cfg, "position_threshold", 0.01)
+        )
+        self._place_release_position_threshold = float(
+            self._get_cfg_value(place_cfg, "release_position_threshold", 0.02)
+        )
+        self._place_pre_place_z = float(self._get_cfg_value(place_cfg, "pre_place_z", 0.20))
+        self._place_offset_z = float(self._get_cfg_value(place_cfg, "place_offset_z", 0.05))
+        self._place_retreat_offset_x = float(self._get_cfg_value(place_cfg, "retreat_offset_x", -0.15))
+        self._place_retreat_offset_z = float(self._get_cfg_value(place_cfg, "retreat_offset_z", 0.15))
+        self._pick_end_effector_orientation = R.from_euler(
+            "xyz",
+            np.radians(self._load_euler_deg(pick_cfg, "end_effector_euler_deg", [0.0, 90.0, 30.0])),
+        ).as_quat()
+        self._place_end_effector_orientation = R.from_euler(
+            "xyz",
+            np.radians(self._load_euler_deg(place_cfg, "end_effector_euler_deg", [0.0, 90.0, 20.0])),
+        ).as_quat()
+
+    @staticmethod
+    def _get_cfg_value(cfg_section, key, default):
+        if cfg_section is None:
+            return default
+        value = getattr(cfg_section, key, default)
+        return default if value is None else value
+
+    @classmethod
+    def _load_sequence(cls, cfg_section, key, default, expected_len=None):
+        values = cls._get_cfg_value(cfg_section, key, default)
+        if isinstance(values, np.ndarray):
+            sequence = values.tolist()
+        else:
+            try:
+                sequence = list(values)
+            except TypeError:
+                sequence = list(default)
+        if expected_len is not None and len(sequence) != expected_len:
+            return list(default)
+        return sequence
+
+    @classmethod
+    def _load_euler_deg(cls, cfg_section, key, default):
+        values = np.asarray(cls._load_sequence(cfg_section, key, default, expected_len=3), dtype=float).reshape(-1)
+        if values.size != 3:
+            return np.asarray(default, dtype=float)
+        return values
 
     def _init_collect_mode(self, cfg, robot):
         """Initialize controller for data collection mode."""
@@ -33,11 +100,13 @@ class PlaceTaskController(BaseController):
             name="place_controller",
             cspace_controller=self.rmp_controller,
             gripper=robot.gripper,
+            events_dt=self._place_events_dt,
+            position_threshold=self._place_position_threshold,
         )
         self.pick_controller = PickController(
             name="pick_controller",
             cspace_controller=self.rmp_controller,
-            events_dt=[0.002, 0.002, 0.005, 0.02, 0.05, 0.01, 0.02]
+            events_dt=self._pick_events_dt,
         )
         self.active_controller = self.pick_controller
 
@@ -46,7 +115,7 @@ class PlaceTaskController(BaseController):
         self.pick_controller = PickController(
             name="pick_controller",
             cspace_controller=self.rmp_controller,
-            events_dt=[0.002, 0.002, 0.005, 0.02, 0.05, 0.01, 0.02]
+            events_dt=self._pick_events_dt,
         )
         super()._init_infer_mode(cfg, robot)
 
@@ -56,10 +125,10 @@ class PlaceTaskController(BaseController):
         self.current_phase = Phase.PICKING
         self.initial_position = None
         self.initial_size = None
-        self.pick_controller.reset()
+        self.pick_controller.reset(events_dt=self._pick_events_dt)
         if self.mode == "collect":
             self.active_controller = self.pick_controller
-            self.place_controller.reset()
+            self.place_controller.reset(events_dt=self._place_events_dt)
         else:
             self.inference_engine.reset()
 
@@ -67,11 +136,16 @@ class PlaceTaskController(BaseController):
         """Check if current phase is successful based on object position."""
         object_pos = self.state['object_position']
         target_position = self.state['target_position']
+        if object_pos is None or target_position is None or self.initial_position is None:
+            return False
         
         if self.current_phase == Phase.PICKING:
-            return object_pos[2] > self.initial_position[2] + 0.1
+            return object_pos[2] > self.initial_position[2] + self._pick_success_min_height_delta
         elif self.current_phase == Phase.PLACING:
-            success = (np.linalg.norm(object_pos[:2] - target_position[:2]) < 0.05 and abs(object_pos[2] - self.initial_position[2]) < 0.05)
+            success = (
+                np.linalg.norm(object_pos[:2] - target_position[:2]) < self._place_success_xy_threshold
+                and abs(object_pos[2] - self.initial_position[2]) < self._place_success_z_threshold
+            )
             return success
 
 
@@ -112,15 +186,23 @@ class PlaceTaskController(BaseController):
                     object_name=state['object_name'],
                     gripper_control=self.gripper_control,
                     gripper_position=state['gripper_position'],
-                    end_effector_orientation=R.from_euler('xyz', np.radians([0, 90, 30])).as_quat(),
+                    end_effector_orientation=self._pick_end_effector_orientation,
+                    pre_offset_x=self._pick_pre_offset_x,
+                    pre_offset_z=self._pick_pre_offset_z,
+                    after_offset_z=self._pick_after_offset_z,
                 )
             else:
                 action = self.place_controller.forward(
                     place_position = state['target_position'],
                     current_joint_positions=state['joint_positions'],
                     gripper_control=self.gripper_control,
-                    end_effector_orientation=R.from_euler('xyz', np.radians([0, 90, 20])).as_quat(),
-                    gripper_position=state['gripper_position']
+                    end_effector_orientation=self._place_end_effector_orientation,
+                    gripper_position=state['gripper_position'],
+                    pre_place_z=self._place_pre_place_z,
+                    place_offset_z=self._place_offset_z,
+                    place_position_threshold=self._place_release_position_threshold,
+                    retreat_offset_x=self._place_retreat_offset_x,
+                    retreat_offset_z=self._place_retreat_offset_z,
                 )
                 if 'camera_data' in state:
                     self.data_collector.cache_step(
@@ -133,12 +215,12 @@ class PlaceTaskController(BaseController):
 
         if success:
             if self.current_phase == Phase.PICKING:
-                print("Pick task success! Switching to pour...")
+                print("Pick task success! Switching to place...")
                 self.current_phase = Phase.PLACING
                 self.active_controller = self.place_controller
                 return None, False, False
             elif self.current_phase == Phase.PLACING:
-                print("Pour task success!")
+                print("Place task success!")
                 self.data_collector.write_cached_data(state['joint_positions'][:-1])
                 self._last_success = True
                 self.current_phase = Phase.FINISHED
@@ -168,7 +250,10 @@ class PlaceTaskController(BaseController):
                     object_name=state['object_name'],
                     gripper_control=self.gripper_control,
                     gripper_position=state['gripper_position'],
-                    end_effector_orientation=R.from_euler('xyz', np.radians([0, 90, 30])).as_quat(),
+                    end_effector_orientation=self._pick_end_effector_orientation,
+                    pre_offset_x=self._pick_pre_offset_x,
+                    pre_offset_z=self._pick_pre_offset_z,
+                    after_offset_z=self._pick_after_offset_z,
                 )    
         else:
             state['language_instruction'] = self.get_language_instruction()
@@ -178,7 +263,13 @@ class PlaceTaskController(BaseController):
     def is_success(self):
         object_pos = self.state["object_position"]
         target_position = self.state['target_position']
-        if (np.linalg.norm(object_pos[:2] - target_position[:2]) < 0.05 and abs(object_pos[2] - self.initial_position[2]) < 0.05):
+        if (
+            object_pos is not None
+            and target_position is not None
+            and self.initial_position is not None
+            and np.linalg.norm(object_pos[:2] - target_position[:2]) < self._place_success_xy_threshold
+            and abs(object_pos[2] - self.initial_position[2]) < self._place_success_z_threshold
+        ):
             self._last_success = True
             self.current_phase = Phase.FINISHED
             return True

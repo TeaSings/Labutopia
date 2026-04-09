@@ -1,5 +1,5 @@
 from isaacsim.core.api.controllers import BaseController
-from isaacsim.core.utils.stage import get_stage_units, get_current_stage
+from isaacsim.core.utils.stage import get_stage_units
 from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.core.utils.rotations import euler_angles_to_quat
 import numpy as np
@@ -13,7 +13,7 @@ class PlaceController(BaseController):
         cspace_controller: BaseController,
         gripper: Gripper = None,
         events_dt: typing.Optional[typing.List[float]] = None,
-        _position_threshold: float = 0.01
+        position_threshold: float = 0.01,
     ) -> None:
         BaseController.__init__(self, name=name)
         self._event = 0
@@ -29,7 +29,7 @@ class PlaceController(BaseController):
                 self._events_dt = self._events_dt.tolist()
             if len(self._events_dt) != 6:
                 raise Exception("events dt 6")
-        self._position_threshold = _position_threshold
+        self._position_threshold = position_threshold
         self._cspace_controller = cspace_controller
         self._gripper = gripper
         self._start = True
@@ -45,6 +45,9 @@ class PlaceController(BaseController):
         gripper_position: typing.Optional[np.ndarray] = None,
         pre_place_z: float = 0.2,
         place_offset_z: float = 0.05,
+        place_position_threshold: float = 0.02,
+        retreat_offset_x: float = -0.15,
+        retreat_offset_z: float = 0.15,
     ) -> ArticulationAction:
         
         if self._start:
@@ -76,8 +79,8 @@ class PlaceController(BaseController):
                 target_end_effector_orientation=end_effector_orientation
             )
             if gripper_position is not None:
-                xy_distance = np.linalg.norm(self.target_position - gripper_position)
-                if xy_distance < 0.02:
+                position_distance = np.linalg.norm(self.target_position - gripper_position)
+                if position_distance < place_position_threshold:
                     self._event += 1
                     self._t = 0
         elif self._event == 2:
@@ -85,8 +88,8 @@ class PlaceController(BaseController):
         elif self._event == 3:
             target_joint_positions = self._gripper.forward(action="open")
             self.target_position = place_position.copy()
-            self.target_position[2] += 0.15 / get_stage_units()
-            self.target_position[0] -= 0.15 / get_stage_units()
+            self.target_position[2] += retreat_offset_z / get_stage_units()
+            self.target_position[0] += retreat_offset_x / get_stage_units()
             gripper_control.release_object()
         elif self._event == 4:
             target_joint_positions = self._cspace_controller.forward(

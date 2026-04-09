@@ -27,6 +27,7 @@ infer:
 
 task:
   max_steps: 2000
+  camera_warmup_frames: 45
   obj_paths:
     - path: "/World/beaker2"
       position_range:
@@ -69,6 +70,29 @@ robot:
 collector:
   type: "default"
   compression: gzip
+  save_frames: -1
+
+# place 任务包含 pick 子阶段，先把这一层关键取物参数提到 YAML，避免继续硬改 controller。
+pick:
+  pre_offset_x: 0.05
+  pre_offset_z: 0.05
+  after_offset_z: 0.15
+  end_effector_euler_deg: [0.0, 90.0, 30.0]
+
+# place 子阶段与整局成功判定参数。
+place:
+  pick_events_dt: [0.002, 0.002, 0.005, 0.02, 0.05, 0.01, 0.02]
+  place_events_dt: [0.005, 0.01, 0.08, 0.05, 0.01, 0.1]
+  pick_success_min_height_delta: 0.10
+  place_success_xy_threshold: 0.05
+  place_success_z_threshold: 0.05
+  end_effector_euler_deg: [0.0, 90.0, 20.0]
+  pre_place_z: 0.20
+  place_offset_z: 0.05
+  position_threshold: 0.01
+  release_position_threshold: 0.02
+  retreat_offset_x: -0.15
+  retreat_offset_z: 0.15
 
 hydra:
   run:

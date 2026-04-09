@@ -1,0 +1,5 @@
+defaults:
+  - level1_place
+
+name: Level1_place_1ep
+max_episodes: 1
