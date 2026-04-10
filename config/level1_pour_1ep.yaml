@@ -1,0 +1,6 @@
+defaults:
+  - level1_pour
+  - _self_
+
+name: Level1_pour_1ep
+max_episodes: 1

@@ -26,7 +26,11 @@ class PourController(BaseController):
         cspace_controller: BaseController,
         events_dt: typing.Optional[typing.List[float]] = None,
         speed: float = 1,
-        position_threshold: float = 0.006
+        position_threshold: float = 0.006,
+        stage0_xy_threshold: float = 0.08,
+        height_range_1: typing.Optional[typing.Sequence[float]] = None,
+        height_range_2: typing.Optional[typing.Sequence[float]] = None,
+        pour_default_speed: float = None,
     ) -> None:
         BaseController.__init__(self, name=name)
         self._event = 0
@@ -39,14 +43,19 @@ class PourController(BaseController):
                 raise Exception("events dt need to be list or numpy array")
             elif isinstance(self._events_dt, np.ndarray):
                 self._events_dt = self._events_dt.tolist()
-            assert len(self._events_dt) == 6, "events dt need have length of 6 or less"
+            assert len(self._events_dt) == 6, "events dt need have length of 6"
         self._cspace_controller = cspace_controller
 
-        self._pour_default_speed = - 120.0 / 180.0 * np.pi
+        self._pour_default_speed = (
+            float(pour_default_speed) if pour_default_speed is not None else -120.0 / 180.0 * np.pi
+        )
         self._position_threshold = position_threshold
+        self._stage0_xy_threshold = stage0_xy_threshold
 
-        self._height_range_1 = (0.3, 0.4)
-        self._height_range_2 = (0.1, 0.2)
+        self._height_range_1 = tuple(height_range_1) if height_range_1 is not None else (0.3, 0.4)
+        self._height_range_2 = tuple(height_range_2) if height_range_2 is not None else (0.1, 0.2)
+        if len(self._height_range_1) != 2 or len(self._height_range_2) != 2:
+            raise Exception("height range need have length of 2")
         self._random_height_1 = np.random.uniform(*self._height_range_1)
         self._random_height_2 = np.random.uniform(*self._height_range_2)
         
@@ -76,6 +85,7 @@ class PourController(BaseController):
             ArticulationAction: Action to be executed by the ArticulationController.
         """
         self.object_size = source_size
+        target_position = np.array(target_position, dtype=float).copy()
         
         if pour_speed is None:
             self._pour_speed = self._pour_default_speed
@@ -95,7 +105,7 @@ class PourController(BaseController):
             )
             self._random_height_1 = np.random.uniform(*self._height_range_1)
             xy_distance = np.linalg.norm(gripper_position[:2] - target_position[:2])
-            if xy_distance < 0.08:
+            if xy_distance < self._stage0_xy_threshold:
                 self._event += 1
                 self._t = 0
                 return target_joints
@@ -164,8 +174,8 @@ class PourController(BaseController):
                 raise Exception("events dt need to be list or numpy array")
             elif isinstance(self._events_dt, np.ndarray):
                 self._events_dt = self._events_dt.tolist()
-            if len(self._events_dt) > 3:
-                raise Exception("events dt need have length of 3 or less")
+            if len(self._events_dt) != 6:
+                raise Exception("events dt need have length of 6")
 
         self._random_height_1 = np.random.uniform(*self._height_range_1)
         self._random_height_2 = np.random.uniform(*self._height_range_2)

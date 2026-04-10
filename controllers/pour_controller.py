@@ -16,6 +16,56 @@ class Phase(Enum):
 
 class PourTaskController(BaseController):
     def __init__(self, cfg, robot):
+        pick_cfg = getattr(cfg, "pick", None)
+        pour_cfg = getattr(cfg, "pour", None)
+
+        self._pick_events_dt = self._load_sequence(
+            pick_cfg, "events_dt", [0.002, 0.002, 0.005, 0.02, 0.05, 0.01, 0.02], expected_len=7
+        )
+        self._pour_events_dt = self._load_sequence(
+            pour_cfg, "events_dt", [0.006, 0.002, 0.009, 0.01, 0.009, 0.01], expected_len=6
+        )
+        self._pick_pre_offset_x = float(self._get_cfg_value(pick_cfg, "pre_offset_x", 0.05))
+        self._pick_pre_offset_z = float(self._get_cfg_value(pick_cfg, "pre_offset_z", 0.05))
+        self._pick_after_offset_z = float(self._get_cfg_value(pick_cfg, "after_offset_z", 0.5))
+        self._pick_success_min_height_delta = float(
+            self._get_cfg_value(pick_cfg, "success_min_height_delta", 0.12)
+        )
+        self._pick_collect_end_effector_orientation = R.from_euler(
+            "xyz",
+            np.radians(self._load_euler_deg(pick_cfg, "end_effector_euler_deg", [0.0, 90.0, 30.0])),
+        ).as_quat()
+        self._pick_infer_end_effector_orientation = R.from_euler(
+            "xyz",
+            np.radians(self._load_euler_deg(pick_cfg, "infer_end_effector_euler_deg", [0.0, 90.0, 15.0])),
+        ).as_quat()
+
+        self._pour_position_threshold = float(self._get_cfg_value(pour_cfg, "position_threshold", 0.006))
+        self._pour_stage0_xy_threshold = float(self._get_cfg_value(pour_cfg, "stage0_xy_threshold", 0.08))
+        self._pour_speed = float(self._get_cfg_value(pour_cfg, "pour_speed", -1.0))
+        self._pour_success_distance_buffer = float(
+            self._get_cfg_value(pour_cfg, "success_distance_buffer", 0.05)
+        )
+        self._pour_rotation_threshold_deg = float(
+            self._get_cfg_value(pour_cfg, "pour_rotation_threshold_deg", 50.0)
+        )
+        self._return_rotation_threshold_deg = float(
+            self._get_cfg_value(pour_cfg, "return_rotation_threshold_deg", 30.0)
+        )
+        self._return_height_delta = float(self._get_cfg_value(pour_cfg, "return_height_delta", 0.05))
+        self._return_hold_seconds = float(self._get_cfg_value(pour_cfg, "return_hold_seconds", 1.0))
+        self._return_timer_dt = float(self._get_cfg_value(pour_cfg, "return_timer_dt", 0.012))
+        self._pour_height_range_1 = tuple(
+            self._load_sequence(pour_cfg, "approach_height_range", [0.3, 0.4], expected_len=2)
+        )
+        self._pour_height_range_2 = tuple(
+            self._load_sequence(pour_cfg, "pour_height_range", [0.1, 0.2], expected_len=2)
+        )
+        self._pour_end_effector_orientation = R.from_euler(
+            "xyz",
+            np.radians(self._load_euler_deg(pour_cfg, "end_effector_euler_deg", [0.0, 90.0, 10.0])),
+        ).as_quat()
+
         super().__init__(cfg, robot)
         self.initial_position = None
         self.initial_size = None
@@ -27,6 +77,34 @@ class PourTaskController(BaseController):
         self.return_timer = 0
         self.last_error_info = None
         self.current_phase = Phase.PICKING
+
+    @staticmethod
+    def _get_cfg_value(cfg_section, key, default):
+        if cfg_section is None:
+            return default
+        value = getattr(cfg_section, key, default)
+        return default if value is None else value
+
+    @classmethod
+    def _load_sequence(cls, cfg_section, key, default, expected_len=None):
+        values = cls._get_cfg_value(cfg_section, key, default)
+        if isinstance(values, np.ndarray):
+            sequence = values.tolist()
+        else:
+            try:
+                sequence = list(values)
+            except TypeError:
+                sequence = list(default)
+        if expected_len is not None and len(sequence) != expected_len:
+            return list(default)
+        return sequence
+
+    @classmethod
+    def _load_euler_deg(cls, cfg_section, key, default):
+        values = np.asarray(cls._load_sequence(cfg_section, key, default, expected_len=3), dtype=float).reshape(-1)
+        if values.size != 3:
+            return np.asarray(default, dtype=float)
+        return values
             
     def _init_collect_mode(self, cfg, robot):
         super()._init_collect_mode(cfg, robot)
@@ -34,13 +112,17 @@ class PourTaskController(BaseController):
         self.pick_controller = PickController(
             name="pick_controller",
             cspace_controller=self.rmp_controller,
-            events_dt=[0.002, 0.002, 0.005, 0.02, 0.05, 0.01, 0.02]
+            events_dt=self._pick_events_dt,
         )
 
         self.pour_controller = PourController(
             name="pour_controller",
             cspace_controller=self.rmp_controller,
-            events_dt=[0.006, 0.002, 0.009, 0.01, 0.009, 0.01]
+            events_dt=self._pour_events_dt,
+            position_threshold=self._pour_position_threshold,
+            stage0_xy_threshold=self._pour_stage0_xy_threshold,
+            height_range_1=self._pour_height_range_1,
+            height_range_2=self._pour_height_range_2,
         )
         self.active_controller = self.pick_controller
 
@@ -49,7 +131,7 @@ class PourTaskController(BaseController):
         self.pick_controller = PickController(
             name="pick_controller",
             cspace_controller=self.rmp_controller,
-            events_dt=[0.002, 0.002, 0.005, 0.02, 0.05, 0.01, 0.02]
+            events_dt=self._pick_events_dt,
         )
 
     def reset(self):
@@ -63,10 +145,10 @@ class PourTaskController(BaseController):
         self.return_complete = False
         self.return_timer = 0
         self.last_error_info = None
-        self.pick_controller.reset()
+        self.pick_controller.reset(events_dt=self._pick_events_dt)
         if self.mode == "collect":
             self.active_controller = self.pick_controller
-            self.pour_controller.reset()
+            self.pour_controller.reset(events_dt=self._pour_events_dt)
         else:
             self.inference_engine.reset()
 
@@ -79,7 +161,7 @@ class PourTaskController(BaseController):
             raise ValueError("initial_position not set")
 
         if self.current_phase == Phase.PICKING:
-            required_height = self.initial_position[2] + 0.12
+            required_height = self.initial_position[2] + self._pick_success_min_height_delta
             success = object_pos[2] > required_height
             if not success:
                 self.last_error_info = {
@@ -103,7 +185,10 @@ class PourTaskController(BaseController):
             
             # First check if we're close enough to target for pouring
             xy_dist = np.linalg.norm(object_pos[:2] - self.state['target_position'][:2])
-            pour_threshold = self.task_utils.get_pour_threshold(self.state['object_name'], self.state['object_size']) + 0.05
+            pour_threshold = (
+                self.task_utils.get_pour_threshold(self.state['object_name'], self.state['object_size'])
+                + self._pour_success_distance_buffer
+            )
             
             if xy_dist > pour_threshold:
                 self.last_error_info = {
@@ -119,7 +204,7 @@ class PourTaskController(BaseController):
                 self.pour_complete = self.task_utils.check_rotation_angle(
                     self.initial_quaternion, 
                     current_quat,
-                    threshold_degrees=50
+                    threshold_degrees=self._pour_rotation_threshold_deg
                 )
                 if not self.pour_complete:
                     self.last_error_info = {
@@ -134,7 +219,7 @@ class PourTaskController(BaseController):
                 rotation_diff = self.task_utils.check_rotation_angle(
                     self.initial_quaternion,
                     current_quat,
-                    threshold_degrees=30  # smaller threshold for return position
+                    threshold_degrees=self._return_rotation_threshold_deg
                 )
                 if not rotation_diff:
                     self.return_complete = True
@@ -148,15 +233,15 @@ class PourTaskController(BaseController):
                 return False
                 
             # Wait for 2 seconds in return position
-            if self.return_complete and object_pos[2] > self.initial_position[2] + 0.05:
-                self.return_timer += 0.012
-                success = self.return_timer >= 1.0
+            if self.return_complete and object_pos[2] > self.initial_position[2] + self._return_height_delta:
+                self.return_timer += self._return_timer_dt
+                success = self.return_timer >= self._return_hold_seconds
                 if not success:
                     self.last_error_info = {
                         'phase': 'POURING',
                         'error': 'Waiting for return timer',
                         'return_timer': self.return_timer,
-                        'required_time': 1.0
+                        'required_time': self._return_hold_seconds
                     }
                 return success
             else:
@@ -164,7 +249,7 @@ class PourTaskController(BaseController):
                     'phase': 'POURING',
                     'error': 'Object not in correct position for return timer',
                     'current_height': object_pos[2],
-                    'required_height': self.initial_position[2] + 0.05,
+                    'required_height': self.initial_position[2] + self._return_height_delta,
                     'return_complete': self.return_complete
                 }
                 return False
@@ -219,10 +304,10 @@ class PourTaskController(BaseController):
                     object_name=state['object_name'],
                     gripper_control=self.gripper_control,
                     gripper_position=state['gripper_position'],
-                    end_effector_orientation=R.from_euler('xyz', np.radians([0, 90, 30])).as_quat(),
-                    pre_offset_x=0.05,
-                    pre_offset_z=0.05,
-                    after_offset_z=0.5
+                    end_effector_orientation=self._pick_collect_end_effector_orientation,
+                    pre_offset_x=self._pick_pre_offset_x,
+                    pre_offset_z=self._pick_pre_offset_z,
+                    after_offset_z=self._pick_after_offset_z,
                 )
             else:
                 action = self.pour_controller.forward(
@@ -230,9 +315,10 @@ class PourTaskController(BaseController):
                     source_size=self.initial_size,
                     target_position=state['target_position'],
                     current_joint_velocities=self.robot.get_joint_velocities(),
-                    pour_speed=-1,
+                    pour_speed=self._pour_speed,
                     source_name=state['object_name'],
                     gripper_position=state['gripper_position'],
+                    target_end_effector_orientation=self._pour_end_effector_orientation,
                 )
                 
                 if 'camera_data' in state:
@@ -267,7 +353,7 @@ class PourTaskController(BaseController):
                     object_name=state['object_name'],
                     gripper_control=self.gripper_control,
                     gripper_position=state['gripper_position'],
-                    end_effector_orientation=R.from_euler('xyz', np.radians([0, 90, 15])).as_quat(),
+                    end_effector_orientation=self._pick_infer_end_effector_orientation,
                 )
             
         else:

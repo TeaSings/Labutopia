@@ -24,6 +24,7 @@ infer:
 
 task:
   max_steps: 1500
+  camera_warmup_frames: 45
   left_pos:
     x: [0.18, 0.33]
     y: [-0.32, -0.17]
@@ -64,6 +65,31 @@ robot:
 collector:
   type: "default"
   compression: gzip
+  save_frames: -1
+
+pick:
+  events_dt: [0.002, 0.002, 0.005, 0.02, 0.05, 0.01, 0.02]
+  pre_offset_x: 0.05
+  pre_offset_z: 0.05
+  after_offset_z: 0.5
+  success_min_height_delta: 0.12
+  end_effector_euler_deg: [0.0, 90.0, 30.0]
+  infer_end_effector_euler_deg: [0.0, 90.0, 15.0]
+
+pour:
+  events_dt: [0.006, 0.002, 0.009, 0.01, 0.009, 0.01]
+  position_threshold: 0.006
+  stage0_xy_threshold: 0.08
+  approach_height_range: [0.3, 0.4]
+  pour_height_range: [0.1, 0.2]
+  end_effector_euler_deg: [0.0, 90.0, 10.0]
+  pour_speed: -1.0
+  success_distance_buffer: 0.05
+  pour_rotation_threshold_deg: 50.0
+  return_rotation_threshold_deg: 30.0
+  return_height_delta: 0.05
+  return_hold_seconds: 1.0
+  return_timer_dt: 0.012
 
 hydra:
   run:
