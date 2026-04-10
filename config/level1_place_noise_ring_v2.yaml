@@ -1,0 +1,9 @@
+defaults:
+  - level1_place_noise_ring
+  - _self_
+
+name: Level1_place_noise_ring_v2
+
+# ring_v2: 仅轻微收窄半径区间，目标是在保持 ring 思路不变的情况下把成功率从约 22% 往上抬一点。
+noise:
+  place_position_radius_range: [0.044, 0.068]
