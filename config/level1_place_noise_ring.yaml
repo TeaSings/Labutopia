@@ -1,0 +1,24 @@
+defaults:
+  - level1_place
+  - _self_
+
+name: Level1_place_noise_ring
+
+collector:
+  compression: gzip
+  save_frames: -1
+  cache_stride: 20
+
+# ring: 直接围绕目标中心按半径采样，噪声结构与成功判定（xy 半径）对齐。
+noise:
+  enabled: true
+  place_position_mode: radial_ring
+  place_position_radius_range: [0.045, 0.07]
+  place_position_angle_deg: [0.0, 360.0]
+  place_position_z_noise: [-0.003, 0.003]
+  pre_place_z: [-0.008, 0.008]
+  place_offset_z: [-0.006, 0.006]
+  end_effector_euler_deg: [-6, 6]
+  noise_scale: 1.0
+  failure_bias_ratio: 0.0
+  noise_distribution: uniform

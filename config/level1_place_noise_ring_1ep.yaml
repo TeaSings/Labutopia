@@ -1,0 +1,6 @@
+defaults:
+  - level1_place_noise_ring
+  - _self_
+
+name: Level1_place_noise_ring_1ep
+max_episodes: 1

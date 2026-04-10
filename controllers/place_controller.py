@@ -74,6 +74,7 @@ class PlaceTaskController(BaseController):
             self._noise_scale = float(getattr(noise_cfg, "noise_scale", 1.0))
             self._failure_bias_ratio = float(getattr(noise_cfg, "failure_bias_ratio", 0.0))
             self._noise_distribution = str(getattr(noise_cfg, "noise_distribution", "uniform"))
+            self._place_position_mode = str(getattr(noise_cfg, "place_position_mode", "cartesian")).lower()
             legacy_place_position_noise = list(getattr(noise_cfg, "place_position_noise", [-0.03, 0.03]))
             self._noise_range = {
                 "place_position_xy": list(
@@ -82,12 +83,19 @@ class PlaceTaskController(BaseController):
                 "place_position_z": list(
                     getattr(noise_cfg, "place_position_z_noise", legacy_place_position_noise)
                 ),
+                "place_position_radius": list(
+                    getattr(noise_cfg, "place_position_radius_range", [0.04, 0.07])
+                ),
                 "pre_place_z": list(getattr(noise_cfg, "pre_place_z", [-0.04, 0.04])),
                 "place_offset_z": list(getattr(noise_cfg, "place_offset_z", [-0.03, 0.03])),
                 "euler_deg": list(getattr(noise_cfg, "end_effector_euler_deg", [-10.0, 10.0])),
             }
+            self._place_position_angle_deg = list(
+                getattr(noise_cfg, "place_position_angle_deg", [0.0, 360.0])
+            )
         else:
             self._noise_enabled = False
+            self._place_position_mode = "cartesian"
 
         if getattr(cfg, "mode", None) != "collect":
             self._noise_enabled = False
@@ -159,22 +167,47 @@ class PlaceTaskController(BaseController):
             half = (hi - lo) / 2 * scale
             return mid - half, mid + half
 
-        self._episode_noise = {
-            "place_position": np.array(
+        if self._place_position_mode == "radial_ring":
+            theta_lo, theta_hi = self._place_position_angle_deg[0], self._place_position_angle_deg[1]
+            theta_deg = float(np.random.uniform(theta_lo, theta_hi))
+            theta_rad = np.deg2rad(theta_deg)
+            radius = float(sample_in_range(*scaled_range("place_position_radius")))
+            place_position_noise = np.array(
                 [
-                    sample_in_range(*scaled_range("place_position_xy")),
-                    sample_in_range(*scaled_range("place_position_xy")),
+                    radius * np.cos(theta_rad),
+                    radius * np.sin(theta_rad),
                     sample_in_range(*scaled_range("place_position_z")),
                 ],
                 dtype=float,
-            ),
-            "pre_place_z": float(sample_in_range(*scaled_range("pre_place_z"))),
-            "place_offset_z": float(sample_in_range(*scaled_range("place_offset_z"))),
-            "euler_deg": np.array(
-                [sample_in_range(*scaled_range("euler_deg")) for _ in range(3)],
-                dtype=float,
-            ),
-        }
+            )
+            self._episode_noise = {
+                "place_position": place_position_noise,
+                "place_position_radius": radius,
+                "place_position_theta_deg": theta_deg,
+                "pre_place_z": float(sample_in_range(*scaled_range("pre_place_z"))),
+                "place_offset_z": float(sample_in_range(*scaled_range("place_offset_z"))),
+                "euler_deg": np.array(
+                    [sample_in_range(*scaled_range("euler_deg")) for _ in range(3)],
+                    dtype=float,
+                ),
+            }
+        else:
+            self._episode_noise = {
+                "place_position": np.array(
+                    [
+                        sample_in_range(*scaled_range("place_position_xy")),
+                        sample_in_range(*scaled_range("place_position_xy")),
+                        sample_in_range(*scaled_range("place_position_z")),
+                    ],
+                    dtype=float,
+                ),
+                "pre_place_z": float(sample_in_range(*scaled_range("pre_place_z"))),
+                "place_offset_z": float(sample_in_range(*scaled_range("place_offset_z"))),
+                "euler_deg": np.array(
+                    [sample_in_range(*scaled_range("euler_deg")) for _ in range(3)],
+                    dtype=float,
+                ),
+            }
 
     @staticmethod
     def _snapshot_place_state_for_task_props(state):
@@ -228,6 +261,7 @@ class PlaceTaskController(BaseController):
             "object_type": self._get_object_type(state),
             "source_object_name": state.get("object_name"),
             "target_object_name": state.get("target_name"),
+            "place_position_mode": self._place_position_mode,
         }
         sampled_object_position = state.get("sampled_object_position")
         if sampled_object_position is not None:
