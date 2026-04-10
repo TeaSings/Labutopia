@@ -1,0 +1,9 @@
+defaults:
+  - level1_place_noise_v2
+  - _self_
+
+name: Level1_place_noise_v3
+
+# v3: 维持 v2 的低 z / 低姿态扰动，只把 xy 从 ±4cm 回收到 ±3cm。
+noise:
+  place_position_xy_noise: [-0.03, 0.03]
