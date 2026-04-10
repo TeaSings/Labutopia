@@ -74,8 +74,14 @@ class PlaceTaskController(BaseController):
             self._noise_scale = float(getattr(noise_cfg, "noise_scale", 1.0))
             self._failure_bias_ratio = float(getattr(noise_cfg, "failure_bias_ratio", 0.0))
             self._noise_distribution = str(getattr(noise_cfg, "noise_distribution", "uniform"))
+            legacy_place_position_noise = list(getattr(noise_cfg, "place_position_noise", [-0.03, 0.03]))
             self._noise_range = {
-                "place_position": list(getattr(noise_cfg, "place_position_noise", [-0.03, 0.03])),
+                "place_position_xy": list(
+                    getattr(noise_cfg, "place_position_xy_noise", legacy_place_position_noise)
+                ),
+                "place_position_z": list(
+                    getattr(noise_cfg, "place_position_z_noise", legacy_place_position_noise)
+                ),
                 "pre_place_z": list(getattr(noise_cfg, "pre_place_z", [-0.04, 0.04])),
                 "place_offset_z": list(getattr(noise_cfg, "place_offset_z", [-0.03, 0.03])),
                 "euler_deg": list(getattr(noise_cfg, "end_effector_euler_deg", [-10.0, 10.0])),
@@ -155,7 +161,11 @@ class PlaceTaskController(BaseController):
 
         self._episode_noise = {
             "place_position": np.array(
-                [sample_in_range(*scaled_range("place_position")) for _ in range(3)],
+                [
+                    sample_in_range(*scaled_range("place_position_xy")),
+                    sample_in_range(*scaled_range("place_position_xy")),
+                    sample_in_range(*scaled_range("place_position_z")),
+                ],
                 dtype=float,
             ),
             "pre_place_z": float(sample_in_range(*scaled_range("pre_place_z"))),

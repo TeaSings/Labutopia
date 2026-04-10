@@ -1,0 +1,22 @@
+defaults:
+  - level1_place
+  - _self_
+
+name: Level1_place_noise_hard
+
+collector:
+  compression: gzip
+  save_frames: -1
+  cache_stride: 20
+
+# hard 版优先放大平面内放置偏移，尽量少放大 z 向“砸桌”噪声。
+noise:
+  enabled: true
+  place_position_xy_noise: [-0.04, 0.04]
+  place_position_z_noise: [-0.01, 0.01]
+  pre_place_z: [-0.03, 0.03]
+  place_offset_z: [-0.02, 0.02]
+  end_effector_euler_deg: [-12, 12]
+  noise_scale: 2.35
+  failure_bias_ratio: 0.92
+  noise_distribution: edge_bias
