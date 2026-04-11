@@ -1,0 +1,6 @@
+defaults:
+  - level1_pour_noise_multi_obj_v2
+  - _self_
+
+name: Level1_pour_noise_multi_obj_v2_1ep
+max_episodes: 1

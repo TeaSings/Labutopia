@@ -1,0 +1,16 @@
+# V2: 在保持“只噪 pour 阶段”不变的前提下，
+# 通过更高 failure_bias、edge_bias 和更外侧的 ring 半径继续压成功率。
+
+defaults:
+  - level1_pour_noise_multi_obj
+  - _self_
+
+name: Level1_pour_noise_multi_obj_v2
+
+noise:
+  noise_scale: 1.5
+  failure_bias_ratio: 0.8
+  noise_distribution: edge_bias
+  pour_target_position_radius_range: [0.055, 0.095]
+  end_effector_euler_deg: [-8.0, 8.0]
+  pour_speed: [-0.2, 0.2]
