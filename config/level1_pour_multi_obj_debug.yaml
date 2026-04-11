@@ -1,0 +1,15 @@
+# 多物体调度快速验证版：
+# - 验证 4 种源容器是否按 episode 正确切换
+# - 不启用 pour 噪声，只检查 clean multi-object baseline
+
+defaults:
+  - level1_pour_multi_obj
+  - _self_
+
+name: Level1_pour_multi_obj_debug
+max_episodes: 20
+
+task:
+  debug_collection_schedule: true
+  object_switch_metric: episode
+  object_switch_interval: 5

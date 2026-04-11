@@ -61,10 +61,54 @@ class PourTaskController(BaseController):
         self._pour_height_range_2 = tuple(
             self._load_sequence(pour_cfg, "pour_height_range", [0.1, 0.2], expected_len=2)
         )
+        self._default_pour_euler_deg = self._load_euler_deg(
+            pour_cfg, "end_effector_euler_deg", [0.0, 90.0, 10.0]
+        )
         self._pour_end_effector_orientation = R.from_euler(
             "xyz",
-            np.radians(self._load_euler_deg(pour_cfg, "end_effector_euler_deg", [0.0, 90.0, 10.0])),
+            np.radians(self._default_pour_euler_deg),
         ).as_quat()
+
+        self._episode_noise = {}
+        self._episode_properties_set = False
+        self._last_params_used = None
+        self._last_baseline_correction = None
+        self._pour_phase_params = None
+
+        noise_cfg = getattr(cfg, "noise", None)
+        if noise_cfg and getattr(noise_cfg, "enabled", False):
+            self._noise_enabled = True
+            self._noise_scale = float(getattr(noise_cfg, "noise_scale", 1.0))
+            self._failure_bias_ratio = float(getattr(noise_cfg, "failure_bias_ratio", 0.0))
+            self._noise_distribution = str(getattr(noise_cfg, "noise_distribution", "uniform"))
+            self._pour_target_position_mode = str(
+                getattr(noise_cfg, "pour_target_position_mode", "cartesian")
+            ).lower()
+            legacy_target_position_noise = list(getattr(noise_cfg, "target_position_noise", [-0.04, 0.04]))
+            self._noise_range = {
+                "pour_target_position_xy": list(
+                    getattr(noise_cfg, "pour_target_position_xy_noise", legacy_target_position_noise)
+                ),
+                "pour_target_position_z": list(
+                    getattr(noise_cfg, "pour_target_position_z_noise", [-0.01, 0.01])
+                ),
+                "pour_target_position_radius": list(
+                    getattr(noise_cfg, "pour_target_position_radius_range", [0.04, 0.08])
+                ),
+                "approach_height_offset": list(getattr(noise_cfg, "approach_height_offset", [-0.03, 0.03])),
+                "pour_height_offset": list(getattr(noise_cfg, "pour_height_offset", [-0.02, 0.02])),
+                "euler_deg": list(getattr(noise_cfg, "end_effector_euler_deg", [-8.0, 8.0])),
+                "pour_speed": list(getattr(noise_cfg, "pour_speed", [-0.2, 0.2])),
+            }
+            self._pour_target_position_angle_deg = list(
+                getattr(noise_cfg, "pour_target_position_angle_deg", [0.0, 360.0])
+            )
+        else:
+            self._noise_enabled = False
+            self._pour_target_position_mode = "cartesian"
+
+        if getattr(cfg, "mode", None) != "collect":
+            self._noise_enabled = False
 
         super().__init__(cfg, robot)
         self.initial_position = None
@@ -105,6 +149,194 @@ class PourTaskController(BaseController):
         if values.size != 3:
             return np.asarray(default, dtype=float)
         return values
+
+    @staticmethod
+    def _get_object_type(state):
+        obj_category = str(state.get("object_category", "") or "").strip()
+        if obj_category:
+            return obj_category
+        object_name = str(state.get("object_name", "") or "").strip()
+        if object_name:
+            return re.sub(r"\d+", "", object_name).replace("_", " ").replace("  ", " ").strip().lower()
+        return "unknown"
+
+    def _sample_noise(self):
+        if not self._noise_enabled:
+            self._episode_noise = {}
+            return
+
+        if self._failure_bias_ratio > 0 and np.random.random() < self._failure_bias_ratio:
+            scale = self._noise_scale
+        else:
+            scale = 1.0
+        dist = getattr(self, "_noise_distribution", "uniform")
+
+        def sample_in_range(lo, hi):
+            if dist == "edge_bias":
+                u = np.random.beta(0.5, 0.5)
+                return lo + (hi - lo) * u
+            return np.random.uniform(lo, hi)
+
+        def scaled_range(key):
+            lo, hi = self._noise_range[key][0], self._noise_range[key][1]
+            mid = (lo + hi) / 2
+            half = (hi - lo) / 2 * scale
+            return mid - half, mid + half
+
+        if self._pour_target_position_mode == "radial_ring":
+            theta_lo, theta_hi = self._pour_target_position_angle_deg[0], self._pour_target_position_angle_deg[1]
+            theta_deg = float(np.random.uniform(theta_lo, theta_hi))
+            theta_rad = np.deg2rad(theta_deg)
+            radius = float(sample_in_range(*scaled_range("pour_target_position_radius")))
+            target_position_noise = np.array(
+                [
+                    radius * np.cos(theta_rad),
+                    radius * np.sin(theta_rad),
+                    sample_in_range(*scaled_range("pour_target_position_z")),
+                ],
+                dtype=float,
+            )
+            self._episode_noise = {
+                "pour_target_position": target_position_noise,
+                "pour_target_position_radius": radius,
+                "pour_target_position_theta_deg": theta_deg,
+                "approach_height_offset": float(sample_in_range(*scaled_range("approach_height_offset"))),
+                "pour_height_offset": float(sample_in_range(*scaled_range("pour_height_offset"))),
+                "euler_deg": np.array(
+                    [sample_in_range(*scaled_range("euler_deg")) for _ in range(3)],
+                    dtype=float,
+                ),
+                "pour_speed": float(sample_in_range(*scaled_range("pour_speed"))),
+            }
+        else:
+            self._episode_noise = {
+                "pour_target_position": np.array(
+                    [
+                        sample_in_range(*scaled_range("pour_target_position_xy")),
+                        sample_in_range(*scaled_range("pour_target_position_xy")),
+                        sample_in_range(*scaled_range("pour_target_position_z")),
+                    ],
+                    dtype=float,
+                ),
+                "approach_height_offset": float(sample_in_range(*scaled_range("approach_height_offset"))),
+                "pour_height_offset": float(sample_in_range(*scaled_range("pour_height_offset"))),
+                "euler_deg": np.array(
+                    [sample_in_range(*scaled_range("euler_deg")) for _ in range(3)],
+                    dtype=float,
+                ),
+                "pour_speed": float(sample_in_range(*scaled_range("pour_speed"))),
+            }
+
+    @staticmethod
+    def _snapshot_pour_state_for_task_props(state):
+        snapshot = {}
+        if state.get("object_position") is not None:
+            snapshot["object_position"] = [float(x) for x in state["object_position"][:3]]
+        if state.get("target_position") is not None:
+            snapshot["target_position"] = [float(x) for x in state["target_position"][:3]]
+        return snapshot
+
+    def _build_pour_params(self, state):
+        target_position = np.array(state["target_position"][:3], dtype=float)
+        approach_height_range = np.array(self._pour_height_range_1, dtype=float)
+        pour_height_range = np.array(self._pour_height_range_2, dtype=float)
+        euler_deg = self._default_pour_euler_deg.copy()
+        pour_speed = float(self._pour_speed)
+
+        correction_gt = None
+        if self._noise_enabled:
+            if not self._episode_noise:
+                self._sample_noise()
+            n = self._episode_noise
+            target_position = target_position + n["pour_target_position"]
+            approach_height_range = approach_height_range + float(n["approach_height_offset"])
+            pour_height_range = pour_height_range + float(n["pour_height_offset"])
+            euler_deg = euler_deg + n["euler_deg"]
+            pour_speed += float(n["pour_speed"])
+            correction_gt = {
+                "target_position_delta": (-n["pour_target_position"]).tolist(),
+                "approach_height_offset": -float(n["approach_height_offset"]),
+                "pour_height_offset": -float(n["pour_height_offset"]),
+                "euler_deg": (-n["euler_deg"]).tolist(),
+                "pour_speed": -float(n["pour_speed"]),
+            }
+
+        params_used = {
+            "target_position": target_position.tolist(),
+            "approach_height_range": approach_height_range.tolist(),
+            "pour_height_range": pour_height_range.tolist(),
+            "euler_deg": euler_deg.tolist(),
+            "pour_speed": float(pour_speed),
+        }
+        return params_used, correction_gt
+
+    def _maybe_set_pour_task_properties(self, state, params_used, correction_gt):
+        if self._episode_properties_set or not hasattr(self.data_collector, "set_task_properties"):
+            return
+
+        props = {
+            "action_type": "pour",
+            "params_used": params_used,
+            "object_type": self._get_object_type(state),
+            "source_object_name": state.get("object_name"),
+            "target_object_name": state.get("target_name"),
+            "pour_target_position_mode": self._pour_target_position_mode,
+        }
+        sampled_object_position = state.get("sampled_object_position")
+        if sampled_object_position is not None:
+            props["sampled_object_position"] = [float(x) for x in sampled_object_position[:3]]
+        props.update(self._snapshot_pour_state_for_task_props(state))
+
+        if self._noise_enabled:
+            props["injected_noise"] = {
+                key: (value.tolist() if hasattr(value, "tolist") else value)
+                for key, value in self._episode_noise.items()
+            }
+            props["correction_gt"] = correction_gt
+
+        self.data_collector.set_task_properties(props)
+        self._episode_properties_set = True
+        self._last_params_used = dict(params_used)
+        self._last_baseline_correction = dict(correction_gt) if correction_gt else None
+
+    def _prepare_pour_phase(self, state):
+        if self._pour_phase_params is not None:
+            return self._pour_phase_params
+
+        params_used, correction_gt = self._build_pour_params(state)
+        self._maybe_set_pour_task_properties(state, params_used, correction_gt)
+        self.pour_controller.configure_episode_params(
+            height_range_1=params_used["approach_height_range"],
+            height_range_2=params_used["pour_height_range"],
+            reset_random_heights=True,
+        )
+        self._pour_phase_params = {
+            "target_position": np.array(params_used["target_position"], dtype=float),
+            "end_effector_orientation": R.from_euler(
+                "xyz", np.radians(np.asarray(params_used["euler_deg"], dtype=float))
+            ).as_quat(),
+            "pour_speed": float(params_used["pour_speed"]),
+        }
+        return self._pour_phase_params
+
+    def _finalize_collect_episode(self, state, is_success):
+        if self._episode_properties_set and hasattr(self.data_collector, "update_task_properties"):
+            updates = {
+                "is_success": bool(is_success),
+                **self._snapshot_pour_state_for_task_props(state),
+            }
+            if not is_success and self._last_baseline_correction:
+                updates["correction_gt"] = dict(self._last_baseline_correction)
+            self.data_collector.update_task_properties(updates)
+
+        if self._episode_properties_set:
+            self.data_collector.write_cached_data(state["joint_positions"][:-1])
+        else:
+            self.data_collector.clear_cache()
+
+        self._last_success = bool(is_success)
+        self.current_phase = Phase.FINISHED
+        return None, True, bool(is_success)
             
     def _init_collect_mode(self, cfg, robot):
         super()._init_collect_mode(cfg, robot)
@@ -145,10 +377,15 @@ class PourTaskController(BaseController):
         self.return_complete = False
         self.return_timer = 0
         self.last_error_info = None
+        self._episode_properties_set = False
+        self._last_params_used = None
+        self._last_baseline_correction = None
+        self._pour_phase_params = None
         self.pick_controller.reset(events_dt=self._pick_events_dt)
         if self.mode == "collect":
             self.active_controller = self.pick_controller
             self.pour_controller.reset(events_dt=self._pour_events_dt)
+            self._sample_noise()
         else:
             self.inference_engine.reset()
 
@@ -283,13 +520,10 @@ class PourTaskController(BaseController):
                 self.current_phase = Phase.POURING
                 self.active_controller = self.pour_controller
                 return None, False, False
-            elif self.current_phase == Phase.POURING:
+            if self.current_phase == Phase.POURING:
                 print("Pour task success!")
-                self.data_collector.write_cached_data(state['joint_positions'][:-1])
-                self._last_success = True
-                self.current_phase = Phase.FINISHED
-                return None, True, True
-        
+                return self._finalize_collect_episode(state, True)
+
         if self.current_phase == Phase.FINISHED:
             self.reset_needed = True
             return None, True, self._last_success
@@ -310,15 +544,16 @@ class PourTaskController(BaseController):
                     after_offset_z=self._pick_after_offset_z,
                 )
             else:
+                pour_phase_params = self._prepare_pour_phase(state)
                 action = self.pour_controller.forward(
                     articulation_controller=self.robot.get_articulation_controller(),
                     source_size=self.initial_size,
-                    target_position=state['target_position'],
+                    target_position=pour_phase_params["target_position"],
                     current_joint_velocities=self.robot.get_joint_velocities(),
-                    pour_speed=self._pour_speed,
+                    pour_speed=pour_phase_params["pour_speed"],
                     source_name=state['object_name'],
                     gripper_position=state['gripper_position'],
-                    target_end_effector_orientation=self._pour_end_effector_orientation,
+                    target_end_effector_orientation=pour_phase_params["end_effector_orientation"],
                 )
                 
                 if 'camera_data' in state:
@@ -330,13 +565,19 @@ class PourTaskController(BaseController):
             
             return action, False, False
 
-        print(f"{self.current_phase.value} task failed!")
+        if self.current_phase == Phase.PICKING:
+            print("Pick task failed before entering pour phase.")
+            if self.last_error_info is not None:
+                print(f"Phase failure details: {self.last_error_info}")
+            self.data_collector.clear_cache()
+            self._last_success = False
+            self.current_phase = Phase.FINISHED
+            return None, True, False
+
+        print("Pour task failed!")
         if self.last_error_info is not None:
             print(f"Phase failure details: {self.last_error_info}")
-        self.data_collector.clear_cache()
-        self._last_success = False
-        self.current_phase = Phase.FINISHED
-        return None, True, False
+        return self._finalize_collect_episode(state, False)
 
     def _step_infer(self, state):
         """Execute inference mode step."""

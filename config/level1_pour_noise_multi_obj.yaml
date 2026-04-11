@@ -1,0 +1,22 @@
+# Pour 任务 - 多物体 + pour 阶段噪声采集
+# 注意：只对后半段 pour 动作注入噪声，前半段 pick 仍走 clean baseline。
+
+defaults:
+  - level1_pour_multi_obj
+  - _self_
+
+name: Level1_pour_noise_multi_obj
+
+noise:
+  enabled: true
+  noise_scale: 1.35
+  failure_bias_ratio: 0.4
+  noise_distribution: uniform
+  pour_target_position_mode: radial_ring
+  pour_target_position_radius_range: [0.04, 0.085]
+  pour_target_position_angle_deg: [0.0, 360.0]
+  pour_target_position_z_noise: [-0.005, 0.005]
+  approach_height_offset: [-0.02, 0.02]
+  pour_height_offset: [-0.015, 0.015]
+  end_effector_euler_deg: [-6.0, 6.0]
+  pour_speed: [-0.15, 0.15]

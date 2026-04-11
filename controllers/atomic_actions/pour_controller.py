@@ -52,14 +52,36 @@ class PourController(BaseController):
         self._position_threshold = position_threshold
         self._stage0_xy_threshold = stage0_xy_threshold
 
-        self._height_range_1 = tuple(height_range_1) if height_range_1 is not None else (0.3, 0.4)
-        self._height_range_2 = tuple(height_range_2) if height_range_2 is not None else (0.1, 0.2)
-        if len(self._height_range_1) != 2 or len(self._height_range_2) != 2:
-            raise Exception("height range need have length of 2")
+        self._height_range_1 = self._validate_height_range(height_range_1, (0.3, 0.4))
+        self._height_range_2 = self._validate_height_range(height_range_2, (0.1, 0.2))
         self._random_height_1 = np.random.uniform(*self._height_range_1)
         self._random_height_2 = np.random.uniform(*self._height_range_2)
         
         return
+
+    @staticmethod
+    def _validate_height_range(height_range, default_range):
+        values = tuple(height_range) if height_range is not None else tuple(default_range)
+        if len(values) != 2:
+            raise Exception("height range need have length of 2")
+        return values
+
+    def configure_episode_params(
+        self,
+        height_range_1: typing.Optional[typing.Sequence[float]] = None,
+        height_range_2: typing.Optional[typing.Sequence[float]] = None,
+        pour_default_speed: float = None,
+        reset_random_heights: bool = True,
+    ) -> None:
+        if height_range_1 is not None:
+            self._height_range_1 = self._validate_height_range(height_range_1, self._height_range_1)
+        if height_range_2 is not None:
+            self._height_range_2 = self._validate_height_range(height_range_2, self._height_range_2)
+        if pour_default_speed is not None:
+            self._pour_default_speed = float(pour_default_speed)
+        if reset_random_heights:
+            self._random_height_1 = np.random.uniform(*self._height_range_1)
+            self._random_height_2 = np.random.uniform(*self._height_range_2)
 
     def forward(
         self,

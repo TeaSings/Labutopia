@@ -9,6 +9,8 @@ name: Level1_pour_multi_obj
 max_episodes: 600   # 150 ep/源 × 4 源
 
 task:
+  object_switch_metric: episode
+  object_switch_interval: 150
   obj_paths:
     - path: "/World/beaker2"
       position_range:
@@ -30,3 +32,6 @@ task:
         x: [0.25, 0.35]
         y: [0.0, 0.1]
         z: [0.81, 0.81]
+
+noise:
+  enabled: false
