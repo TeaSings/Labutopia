@@ -10,6 +10,8 @@ max_episodes: 450   # 150 ep/门 × 3 门
 
 task:
   operate_type: "door"
+  object_switch_metric: episode
+  object_switch_interval: 150
   obj_paths:
     - path: "/World/DryingBox_01"
       position_range:
@@ -29,3 +31,6 @@ task:
         y: [-0.05, 0.010]
         z: [0.78, 0.78]
       close_gripper_distance: 0.02
+
+noise:
+  enabled: false

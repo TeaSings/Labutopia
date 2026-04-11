@@ -17,7 +17,12 @@ class OpenController(BaseController):
         events_dt: typing.Optional[typing.List[float]] = None,
         furniture_type: str = "drawer",
         door_width: float = 0.3,
-        door_open_direction: str = "counterclockwise"
+        door_open_direction: str = "counterclockwise",
+        position_threshold: float = 0.01,
+        stage0_offset_x: float = 0.08,
+        stage1_offset_x: float = 0.015,
+        retreat_offset_x: float = 0.06,
+        retreat_offset_y: float = 0.04,
     ) -> None:
         BaseController.__init__(self, name=name)
         self._event = 0
@@ -29,6 +34,10 @@ class OpenController(BaseController):
         self.door_open_direction = door_open_direction
         self.position_rotation_interp_iter = None
         self._start = True
+        self._stage0_offset_x = stage0_offset_x
+        self._stage1_offset_x = stage1_offset_x
+        self._retreat_offset_x = retreat_offset_x
+        self._retreat_offset_y = retreat_offset_y
         
         if events_dt is None:
             self._events_dt = [0.0025, 0.005, 0.08, 0.002, 0.05, 0.05, 0.01, 0.008]
@@ -41,7 +50,7 @@ class OpenController(BaseController):
             if len(self._events_dt) != 8:
                 raise Exception(f"events_dt length must be 8, got {len(self._events_dt)}")
 
-        self._position_threshold = 0.01 / get_stage_units()
+        self._position_threshold = position_threshold / get_stage_units()
         
     def forward(
         self,
@@ -115,7 +124,7 @@ class OpenController(BaseController):
     def _execute_drawer_phase(self, handle_position, end_effector_orientation, current_joint_positions, gripper_position):
         """Execute drawer opening action"""
         if self._event == 0:
-            handle_position[0] -= 0.08 / get_stage_units()
+            handle_position[0] -= self._stage0_offset_x / get_stage_units()
             target_joint_positions = self._cspace_controller.forward(
                     target_end_effector_position=handle_position, target_end_effector_orientation=end_effector_orientation
                 )
@@ -125,7 +134,7 @@ class OpenController(BaseController):
                 self._t = 0
                 return target_joint_positions
         elif self._event == 1:
-            handle_position[0] -= 0.015
+            handle_position[0] -= self._stage1_offset_x
             target_joint_positions = self._cspace_controller.forward(
                     target_end_effector_position=handle_position, target_end_effector_orientation=end_effector_orientation
                 )
@@ -172,7 +181,7 @@ class OpenController(BaseController):
     def _execute_door_phase(self, handle_position, end_effector_orientation, current_joint_positions, revolute_joint_position, gripper_position, angle = 50, close_gripper_distance = 0.023):
         """Execute door opening action"""
         if self._event == 0:
-            handle_position[0] -= 0.08
+            handle_position[0] -= self._stage0_offset_x
             target_joint_positions = self._cspace_controller.forward(
                 target_end_effector_position=handle_position, 
                 target_end_effector_orientation=end_effector_orientation
@@ -183,7 +192,7 @@ class OpenController(BaseController):
                 self._t = 0
                 return target_joint_positions
         elif self._event == 1:
-            handle_position[0] -= 0.015
+            handle_position[0] -= self._stage1_offset_x
             target_joint_positions = self._cspace_controller.forward(
                 target_end_effector_position=handle_position, 
                 target_end_effector_orientation=end_effector_orientation
@@ -194,7 +203,7 @@ class OpenController(BaseController):
                 self._t = 0
                 return target_joint_positions
         elif self._event == 2:
-            handle_position[0] -= 0.015
+            handle_position[0] -= self._stage1_offset_x
             target_joint_positions = [None] * current_joint_positions.shape[0]
             target_joint_positions[7] = close_gripper_distance
             target_joint_positions[8] = close_gripper_distance
@@ -234,11 +243,11 @@ class OpenController(BaseController):
             target_joint_positions = ArticulationAction(joint_positions=target_joint_positions)
         elif self._event == 6:
             handle_position = self.trans_interp.copy()
-            handle_position[0] -= 0.06
+            handle_position[0] -= self._retreat_offset_x
             if revolute_joint_position[1] > self.start_position[1]:
-                handle_position[1] += 0.04
+                handle_position[1] += self._retreat_offset_y
             else:
-                handle_position[1] -= 0.04
+                handle_position[1] -= self._retreat_offset_y
 
             # handle_position[2] += 0.4
             target_joint_positions = self._cspace_controller.forward(
@@ -255,13 +264,15 @@ class OpenController(BaseController):
             target_joint_positions = ArticulationAction(joint_positions=target_joint_positions)
         return target_joint_positions
     
-    def reset(self) -> None:
+    def reset(self, events_dt: typing.Optional[typing.List[float]] = None) -> None:
         """Reset controller state"""
         BaseController.reset(self)
         self._event = 0
         self._t = 0
         self.position_rotation_interp_iter = None
         self._start = True
+        if events_dt is not None:
+            self._events_dt = list(events_dt)
 
     def is_done(self) -> bool:
         """Check if controller has completed all states"""

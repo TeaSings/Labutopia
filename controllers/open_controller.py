@@ -18,8 +18,51 @@ class OpenTaskController(BaseController):
     """
 
     def __init__(self, cfg, robot):
+        open_cfg = getattr(cfg, "open", None)
+        self._open_events_dt = self._load_sequence(
+            open_cfg, "events_dt", [0.0025, 0.005, 0.08, 0.004, 0.05, 0.05, 0.01, 0.004], expected_len=8
+        )
+        self._open_position_threshold = float(self._get_cfg_value(open_cfg, "position_threshold", 0.01))
+        self._open_stage0_offset_x = float(self._get_cfg_value(open_cfg, "stage0_offset_x", 0.08))
+        self._open_stage1_offset_x = float(self._get_cfg_value(open_cfg, "stage1_offset_x", 0.015))
+        self._open_retreat_offset_x = float(self._get_cfg_value(open_cfg, "retreat_offset_x", 0.06))
+        self._open_retreat_offset_y = float(self._get_cfg_value(open_cfg, "retreat_offset_y", 0.04))
+        self._door_open_angle = float(self._get_cfg_value(open_cfg, "door_open_angle_deg", 50.0))
+        self._open_end_effector_orientation = euler_angles_to_quats(
+            self._load_euler_deg(open_cfg, "end_effector_euler_deg", [0.0, 110.0, 0.0]),
+            degrees=True,
+            extrinsic=False,
+        )
         super().__init__(cfg, robot)
         self.initial_handle_position = None
+
+    @staticmethod
+    def _get_cfg_value(cfg_section, key, default):
+        if cfg_section is None:
+            return default
+        value = getattr(cfg_section, key, default)
+        return default if value is None else value
+
+    @classmethod
+    def _load_sequence(cls, cfg_section, key, default, expected_len=None):
+        values = cls._get_cfg_value(cfg_section, key, default)
+        if isinstance(values, np.ndarray):
+            sequence = values.tolist()
+        else:
+            try:
+                sequence = list(values)
+            except TypeError:
+                sequence = list(default)
+        if expected_len is not None and len(sequence) != expected_len:
+            return list(default)
+        return sequence
+
+    @classmethod
+    def _load_euler_deg(cls, cfg_section, key, default):
+        values = np.asarray(cls._load_sequence(cfg_section, key, default, expected_len=3), dtype=float).reshape(-1)
+        if values.size != 3:
+            return np.asarray(default, dtype=float)
+        return values
             
     def _init_collect_mode(self, cfg, robot):
         """Initializes the controller for data collection mode.
@@ -37,9 +80,14 @@ class OpenTaskController(BaseController):
                 robot_articulation=robot
             ),
             gripper=robot.gripper,
-            events_dt=[0.0025, 0.005, 0.08, 0.004, 0.05, 0.05, 0.01, 0.004],
+            events_dt=self._open_events_dt,
             furniture_type=self.cfg.task.get("operate_type", "door"),
-            door_open_direction="clockwise"
+            door_open_direction="clockwise",
+            position_threshold=self._open_position_threshold,
+            stage0_offset_x=self._open_stage0_offset_x,
+            stage1_offset_x=self._open_stage1_offset_x,
+            retreat_offset_x=self._open_retreat_offset_x,
+            retreat_offset_y=self._open_retreat_offset_y,
         )
 
     def _init_infer_mode(self, cfg, robot):
@@ -65,7 +113,7 @@ class OpenTaskController(BaseController):
         super().reset()
         self.initial_handle_position = None
         if self.mode == "collect":
-            self.open_controller.reset()
+            self.open_controller.reset(events_dt=self._open_events_dt)
         else:
             self.inference_engine.reset()
 
@@ -103,7 +151,8 @@ class OpenTaskController(BaseController):
                     current_joint_positions=state['joint_positions'],
                     revolute_joint_position=state['revolute_joint_position'],
                     gripper_position=state['gripper_position'],
-                    end_effector_orientation=euler_angles_to_quats([0, 110, 0], degrees=True, extrinsic=False),
+                    end_effector_orientation=self._open_end_effector_orientation,
+                    angle=self._door_open_angle,
                     close_gripper_distance=close_gripper_distance
                 )
             else:

@@ -1,0 +1,15 @@
+# 多门调度快速验证版：
+# - 验证 3 种门是否按 episode 正确切换
+# - 不启用噪声，只检查 clean multi-object baseline
+
+defaults:
+  - level1_open_door_multi_obj
+  - _self_
+
+name: Level1_open_door_multi_obj_debug
+max_episodes: 18
+
+task:
+  debug_collection_schedule: true
+  object_switch_metric: episode
+  object_switch_interval: 6
