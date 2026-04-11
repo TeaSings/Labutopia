@@ -1,0 +1,21 @@
+# Open door 任务 - 多门 + open 阶段噪声采集
+# 注意：当前噪声直接作用于开门动作本身，不改 clean baseline 成功判定。
+
+defaults:
+  - level1_open_door_multi_obj
+  - _self_
+
+name: Level1_open_door_noise_multi_obj
+
+noise:
+  enabled: true
+  noise_scale: 1.35
+  failure_bias_ratio: 0.4
+  noise_distribution: uniform
+  stage0_offset_x: [-0.02, 0.02]
+  stage1_offset_x: [-0.008, 0.008]
+  retreat_offset_x: [-0.02, 0.02]
+  retreat_offset_y: [-0.02, 0.02]
+  end_effector_euler_deg: [-8.0, 8.0]
+  door_open_angle_deg: [-12.0, 12.0]
+  close_gripper_distance: [-0.006, 0.006]

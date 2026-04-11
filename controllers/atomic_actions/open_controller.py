@@ -51,6 +51,25 @@ class OpenController(BaseController):
                 raise Exception(f"events_dt length must be 8, got {len(self._events_dt)}")
 
         self._position_threshold = position_threshold / get_stage_units()
+
+    def configure_episode_params(
+        self,
+        position_threshold: float = None,
+        stage0_offset_x: float = None,
+        stage1_offset_x: float = None,
+        retreat_offset_x: float = None,
+        retreat_offset_y: float = None,
+    ) -> None:
+        if position_threshold is not None:
+            self._position_threshold = float(position_threshold) / get_stage_units()
+        if stage0_offset_x is not None:
+            self._stage0_offset_x = float(stage0_offset_x)
+        if stage1_offset_x is not None:
+            self._stage1_offset_x = float(stage1_offset_x)
+        if retreat_offset_x is not None:
+            self._retreat_offset_x = float(retreat_offset_x)
+        if retreat_offset_y is not None:
+            self._retreat_offset_y = float(retreat_offset_y)
         
     def forward(
         self,
