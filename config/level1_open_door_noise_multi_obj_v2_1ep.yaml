@@ -1,0 +1,6 @@
+defaults:
+  - level1_open_door_noise_multi_obj_v2
+  - _self_
+
+name: Level1_open_door_noise_multi_obj_v2_1ep
+max_episodes: 1

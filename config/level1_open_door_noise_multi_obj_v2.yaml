@@ -1,0 +1,20 @@
+# V2: 改成更明显的 failure-biased 噪声。
+# 目标不是均匀探索，而是把成功率从 clean 区域真正压下来。
+
+defaults:
+  - level1_open_door_noise_multi_obj
+  - _self_
+
+name: Level1_open_door_noise_multi_obj_v2
+
+noise:
+  noise_scale: 1.6
+  failure_bias_ratio: 0.9
+  noise_distribution: edge_bias
+  stage0_offset_x: [0.01, 0.04]
+  stage1_offset_x: [0.003, 0.018]
+  retreat_offset_x: [-0.04, -0.01]
+  retreat_offset_y: [-0.03, -0.005]
+  end_effector_euler_deg: [-12.0, 12.0]
+  door_open_angle_deg: [-20.0, 0.0]
+  close_gripper_distance: [0.003, 0.012]

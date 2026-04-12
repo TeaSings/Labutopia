@@ -435,17 +435,19 @@ class OpenTaskController(BaseController):
         gripper_far_enough = gripper_to_object_distance > 0.04
         
         success = handle_moved_enough and gripper_far_enough
+        if success:
+            self._last_failure_reason = ""
+            return True
         
         # Update failure reason
-        if not success:
-            if not handle_moved_enough and not gripper_far_enough:
-                self._last_failure_reason = f"Handle moved distance too short ({handle_move_distance:.4f}<0.12) and Gripper too close to object ({gripper_to_object_distance:.4f}<0.04)"
-            elif not handle_moved_enough:
-                self._last_failure_reason = f"Handle moved distance too short ({handle_move_distance:.4f}<0.12)"
-            elif not gripper_far_enough:
-                self._last_failure_reason = f"Gripper too close to object ({gripper_to_object_distance:.4f}<0.04)"
+        if not handle_moved_enough and not gripper_far_enough:
+            self._last_failure_reason = f"Handle moved distance too short ({handle_move_distance:.4f}<0.12) and Gripper too close to object ({gripper_to_object_distance:.4f}<0.04)"
+        elif not handle_moved_enough:
+            self._last_failure_reason = f"Handle moved distance too short ({handle_move_distance:.4f}<0.12)"
+        else:
+            self._last_failure_reason = f"Gripper too close to object ({gripper_to_object_distance:.4f}<0.04)"
         
-        return success
+        return False
 
     def get_language_instruction(self) -> Optional[str]:
         """Get the language instruction for the current task.
