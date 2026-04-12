@@ -152,14 +152,23 @@ class BaseController(ABC):
         if skipped:
             self._skipped_count = getattr(self, '_skipped_count', 0) + 1
         self._episode_num += 1
+        attempted = self._episode_num
         if self.mode == "collect":
             written = self.data_collector.episode_count
         else:
-            written = self._episode_num
+            written = attempted
+        not_written = max(0, attempted - written)
         msg = f"Episode Stats: Success = {self.success_count}/{written} written"
         if self._skipped_count > 0:
             msg += f", {self._skipped_count} skipped (object_position=None / tipped / exception)"
-        msg += f" ({100*self.success_count/max(1,written):.1f}% success)"
+        msg += f" ({100*self.success_count/max(1,written):.1f}% among written)"
+        if self.mode == "collect":
+            msg += (
+                f"; attempted = {attempted}, "
+                f"success = {self.success_count}/{attempted} "
+                f"({100*self.success_count/max(1,attempted):.1f}% among attempted), "
+                f"not_written = {not_written}"
+            )
         print(msg)
         self.check_success_counter = 0
         self.reset_needed = False
