@@ -248,13 +248,12 @@ class OpenTaskController(BaseController):
                 updates["correction_gt"] = dict(self._last_baseline_correction)
             self.data_collector.update_task_properties(updates)
 
-        if is_success:
+        if self._episode_properties_set:
             self.data_collector.write_cached_data(state['joint_positions'][:-1])
-            self._last_success = True
         else:
             self.data_collector.clear_cache()
-            self._last_success = False
 
+        self._last_success = bool(is_success)
         self.reset_needed = True
         return None, True, bool(is_success)
             
