@@ -316,10 +316,14 @@ class OpenTaskController(BaseController):
             self.inference_engine.reset()
 
     def is_atomic_action_complete(self) -> bool:
-        """Prevent task-level timeout from resetting mid-open before collect finalization."""
+        """Prevent task-level timeout from resetting before collect finalization runs."""
         if self.mode != "collect" or not hasattr(self, "open_controller"):
             return True
-        return self.open_controller.is_done()
+        if not self.open_controller.is_done():
+            return False
+        # Give the controller one more step to run _finalize_collect_episode()
+        # after the atomic open action reaches its terminal event.
+        return bool(self.reset_needed)
 
     def step(self, state):
         """Executes one step of the task based on the current state.
