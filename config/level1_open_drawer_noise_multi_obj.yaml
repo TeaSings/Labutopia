@@ -1,0 +1,21 @@
+# Open drawer 任务 - 多抽屉 + open 阶段噪声采集
+# 第一版先只难化 drawer 打开动作本身，不改 clean baseline 成功判定。
+
+defaults:
+  - level1_open_drawer_multi_obj
+  - _self_
+
+name: Level1_open_drawer_noise_multi_obj
+
+noise:
+  enabled: true
+  noise_scale: 1.4
+  failure_bias_ratio: 0.6
+  noise_distribution: uniform
+  stage0_offset_x: [0.005, 0.03]
+  stage1_offset_x: [0.002, 0.015]
+  drawer_pull_offset_x: [-0.02, -0.004]
+  drawer_retreat_offset_x: [-0.05, -0.015]
+  drawer_retreat_offset_z: [-0.03, -0.005]
+  end_effector_euler_deg: [-10.0, 10.0]
+  close_gripper_distance: [0.002, 0.01]
