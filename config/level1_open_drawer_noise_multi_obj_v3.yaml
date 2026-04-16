@@ -1,0 +1,17 @@
+# V3: 继续收窄 pull / retreat 噪声，只做轻度失败偏置。
+# 目标把成功率从 v2 的 14% 拉回到更可用区间，同时保留“开得不够”的失败形态。
+
+defaults:
+  - level1_open_drawer_noise_multi_obj_v2
+  - _self_
+
+name: Level1_open_drawer_noise_multi_obj_v3
+
+noise:
+  stage0_offset_x: [0.0, 0.006]
+  stage1_offset_x: [0.0, 0.003]
+  drawer_pull_offset_x: [-0.01, -0.002]
+  drawer_retreat_offset_x: [-0.01, -0.003]
+  drawer_retreat_offset_z: [-0.005, 0.0]
+  end_effector_euler_deg: [-2.5, 2.5]
+  close_gripper_distance: [0.0, 0.0025]
