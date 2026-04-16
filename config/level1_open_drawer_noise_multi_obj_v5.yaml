@@ -1,0 +1,17 @@
+# V5: 在 v4 基础上轻微放宽 drawer noise。
+# 目标是把成功率从约 23% 提高一点，尽量落到更顺眼的 25%-30% 区间。
+
+defaults:
+  - level1_open_drawer_noise_multi_obj_v4
+  - _self_
+
+name: Level1_open_drawer_noise_multi_obj_v5
+
+noise:
+  stage0_offset_x: [0.0, 0.007]
+  stage1_offset_x: [0.0, 0.0035]
+  drawer_pull_offset_x: [-0.011, -0.0025]
+  drawer_retreat_offset_x: [-0.013, -0.004]
+  drawer_retreat_offset_z: [-0.006, 0.0]
+  end_effector_euler_deg: [-3.0, 3.0]
+  close_gripper_distance: [0.0, 0.003]

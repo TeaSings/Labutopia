@@ -1,0 +1,6 @@
+defaults:
+  - level1_open_drawer_noise_multi_obj_v5
+  - _self_
+
+name: Level1_open_drawer_noise_multi_obj_v5_1ep
+max_episodes: 1
