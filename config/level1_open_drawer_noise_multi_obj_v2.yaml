@@ -1,0 +1,20 @@
+# V2: 收窄 pre-grasp / 抓取噪声，保留对 drawer pull 阶段的难化。
+# 目标是把失败从“完全没抓上”拉回到“能抓上但开得不够”。
+
+defaults:
+  - level1_open_drawer_noise_multi_obj
+  - _self_
+
+name: Level1_open_drawer_noise_multi_obj_v2
+
+noise:
+  noise_scale: 1.0
+  failure_bias_ratio: 0.0
+  noise_distribution: uniform
+  stage0_offset_x: [0.0, 0.01]
+  stage1_offset_x: [0.0, 0.005]
+  drawer_pull_offset_x: [-0.015, -0.004]
+  drawer_retreat_offset_x: [-0.02, -0.006]
+  drawer_retreat_offset_z: [-0.01, 0.0]
+  end_effector_euler_deg: [-4.0, 4.0]
+  close_gripper_distance: [0.0, 0.004]
