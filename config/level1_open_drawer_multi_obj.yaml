@@ -1,0 +1,31 @@
+# Open drawer 任务 - 多抽屉 clean baseline
+defaults:
+  - level1_open_drawer
+  - universal_vlm_collect
+  - _self_
+
+name: Level1_open_drawer_multi_obj
+max_episodes: 300
+
+task:
+  operate_type: "drawer"
+  object_switch_metric: episode
+  object_switch_interval: 150
+  obj_paths:
+    - path: "/World/Cabinet_01"
+      handle_path: "/World/Cabinet_01/drawer_handle_top"
+      close_gripper_distance: 0.01
+      position_range:
+        x: [0.70, 0.77]
+        y: [-0.05, 0.05]
+        z: [1.15, 1.15]
+    - path: "/World/Cabinet_02"
+      handle_path: "/World/Cabinet_02/drawer_handle_top"
+      close_gripper_distance: 0.01
+      position_range:
+        x: [0.68, 0.78]
+        y: [-0.05, 0.05]
+        z: [1.15, 1.15]
+
+noise:
+  enabled: false

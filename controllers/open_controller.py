@@ -18,6 +18,7 @@ class OpenTaskController(BaseController):
     """
 
     def __init__(self, cfg, robot):
+        self._operate_type = str(cfg.task.get("operate_type", "door"))
         open_cfg = getattr(cfg, "open", None)
         self._open_events_dt = self._load_sequence(
             open_cfg, "events_dt", [0.0025, 0.005, 0.08, 0.004, 0.05, 0.05, 0.01, 0.004], expected_len=8
@@ -27,8 +28,16 @@ class OpenTaskController(BaseController):
         self._open_stage1_offset_x = float(self._get_cfg_value(open_cfg, "stage1_offset_x", 0.015))
         self._open_retreat_offset_x = float(self._get_cfg_value(open_cfg, "retreat_offset_x", 0.06))
         self._open_retreat_offset_y = float(self._get_cfg_value(open_cfg, "retreat_offset_y", 0.04))
+        self._drawer_pull_offset_x = float(self._get_cfg_value(open_cfg, "drawer_pull_offset_x", 0.04))
+        self._drawer_retreat_offset_x = float(self._get_cfg_value(open_cfg, "drawer_retreat_offset_x", 0.12))
+        self._drawer_retreat_offset_z = float(self._get_cfg_value(open_cfg, "drawer_retreat_offset_z", 0.06))
         self._door_open_angle = float(self._get_cfg_value(open_cfg, "door_open_angle_deg", 50.0))
-        self._default_open_euler_deg = self._load_euler_deg(open_cfg, "end_effector_euler_deg", [0.0, 110.0, 0.0])
+        default_euler_deg = [0.0, 110.0, 0.0] if self._operate_type == "door" else [90.0, 90.0, 0.0]
+        self._default_open_euler_deg = self._load_euler_deg(open_cfg, "end_effector_euler_deg", default_euler_deg)
+        default_close_gripper = 0.023 if self._operate_type == "door" else 0.01
+        self._default_close_gripper_distance = float(
+            self._get_cfg_value(open_cfg, "close_gripper_distance", default_close_gripper)
+        )
         self._open_end_effector_orientation = euler_angles_to_quats(
             self._default_open_euler_deg,
             degrees=True,
@@ -51,6 +60,9 @@ class OpenTaskController(BaseController):
                 "stage1_offset_x": list(getattr(noise_cfg, "stage1_offset_x", [-0.008, 0.008])),
                 "retreat_offset_x": list(getattr(noise_cfg, "retreat_offset_x", [-0.02, 0.02])),
                 "retreat_offset_y": list(getattr(noise_cfg, "retreat_offset_y", [-0.02, 0.02])),
+                "drawer_pull_offset_x": list(getattr(noise_cfg, "drawer_pull_offset_x", [-0.02, 0.02])),
+                "drawer_retreat_offset_x": list(getattr(noise_cfg, "drawer_retreat_offset_x", [-0.03, 0.03])),
+                "drawer_retreat_offset_z": list(getattr(noise_cfg, "drawer_retreat_offset_z", [-0.02, 0.02])),
                 "end_effector_euler_deg": list(getattr(noise_cfg, "end_effector_euler_deg", [-8.0, 8.0])),
                 "door_open_angle_deg": list(getattr(noise_cfg, "door_open_angle_deg", [-12.0, 12.0])),
                 "close_gripper_distance": list(getattr(noise_cfg, "close_gripper_distance", [-0.006, 0.006])),
@@ -130,6 +142,9 @@ class OpenTaskController(BaseController):
             "stage1_offset_x": float(sample_in_range(*scaled_range("stage1_offset_x"))),
             "retreat_offset_x": float(sample_in_range(*scaled_range("retreat_offset_x"))),
             "retreat_offset_y": float(sample_in_range(*scaled_range("retreat_offset_y"))),
+            "drawer_pull_offset_x": float(sample_in_range(*scaled_range("drawer_pull_offset_x"))),
+            "drawer_retreat_offset_x": float(sample_in_range(*scaled_range("drawer_retreat_offset_x"))),
+            "drawer_retreat_offset_z": float(sample_in_range(*scaled_range("drawer_retreat_offset_z"))),
             "end_effector_euler_deg": np.array(
                 [sample_in_range(*scaled_range("end_effector_euler_deg")) for _ in range(3)],
                 dtype=float,
@@ -153,9 +168,12 @@ class OpenTaskController(BaseController):
         stage1_offset_x = self._open_stage1_offset_x
         retreat_offset_x = self._open_retreat_offset_x
         retreat_offset_y = self._open_retreat_offset_y
+        drawer_pull_offset_x = self._drawer_pull_offset_x
+        drawer_retreat_offset_x = self._drawer_retreat_offset_x
+        drawer_retreat_offset_z = self._drawer_retreat_offset_z
         euler_deg = self._default_open_euler_deg.copy()
         door_open_angle_deg = float(self._door_open_angle)
-        close_gripper_distance = float(state.get("close_gripper_distance", 0.023))
+        close_gripper_distance = float(state.get("close_gripper_distance", self._default_close_gripper_distance))
 
         correction_gt = None
         if self._noise_enabled:
@@ -166,6 +184,9 @@ class OpenTaskController(BaseController):
             stage1_offset_x += float(n["stage1_offset_x"])
             retreat_offset_x += float(n["retreat_offset_x"])
             retreat_offset_y += float(n["retreat_offset_y"])
+            drawer_pull_offset_x += float(n["drawer_pull_offset_x"])
+            drawer_retreat_offset_x += float(n["drawer_retreat_offset_x"])
+            drawer_retreat_offset_z += float(n["drawer_retreat_offset_z"])
             euler_deg = euler_deg + n["end_effector_euler_deg"]
             door_open_angle_deg += float(n["door_open_angle_deg"])
             close_gripper_distance += float(n["close_gripper_distance"])
@@ -174,6 +195,9 @@ class OpenTaskController(BaseController):
                 "stage1_offset_x": -float(n["stage1_offset_x"]),
                 "retreat_offset_x": -float(n["retreat_offset_x"]),
                 "retreat_offset_y": -float(n["retreat_offset_y"]),
+                "drawer_pull_offset_x": -float(n["drawer_pull_offset_x"]),
+                "drawer_retreat_offset_x": -float(n["drawer_retreat_offset_x"]),
+                "drawer_retreat_offset_z": -float(n["drawer_retreat_offset_z"]),
                 "end_effector_euler_deg": (-n["end_effector_euler_deg"]).tolist(),
                 "door_open_angle_deg": -float(n["door_open_angle_deg"]),
                 "close_gripper_distance": -float(n["close_gripper_distance"]),
@@ -184,6 +208,9 @@ class OpenTaskController(BaseController):
             "stage1_offset_x": float(stage1_offset_x),
             "retreat_offset_x": float(retreat_offset_x),
             "retreat_offset_y": float(retreat_offset_y),
+            "drawer_pull_offset_x": float(drawer_pull_offset_x),
+            "drawer_retreat_offset_x": float(drawer_retreat_offset_x),
+            "drawer_retreat_offset_z": float(drawer_retreat_offset_z),
             "end_effector_euler_deg": euler_deg.tolist(),
             "door_open_angle_deg": float(door_open_angle_deg),
             "close_gripper_distance": float(close_gripper_distance),
@@ -195,7 +222,7 @@ class OpenTaskController(BaseController):
             return
 
         props = {
-            "action_type": "open_door",
+            "action_type": f"open_{self._operate_type}",
             "params_used": params_used,
             "object_type": self._get_object_type(state),
             "source_object_name": state.get("object_name"),
@@ -226,6 +253,9 @@ class OpenTaskController(BaseController):
             stage1_offset_x=params_used["stage1_offset_x"],
             retreat_offset_x=params_used["retreat_offset_x"],
             retreat_offset_y=params_used["retreat_offset_y"],
+            drawer_pull_offset_x=params_used["drawer_pull_offset_x"],
+            drawer_retreat_offset_x=params_used["drawer_retreat_offset_x"],
+            drawer_retreat_offset_z=params_used["drawer_retreat_offset_z"],
         )
         self._open_params = {
             "end_effector_orientation": euler_angles_to_quats(
@@ -235,6 +265,9 @@ class OpenTaskController(BaseController):
             ),
             "door_open_angle_deg": float(params_used["door_open_angle_deg"]),
             "close_gripper_distance": float(params_used["close_gripper_distance"]),
+            "drawer_pull_offset_x": float(params_used["drawer_pull_offset_x"]),
+            "drawer_retreat_offset_x": float(params_used["drawer_retreat_offset_x"]),
+            "drawer_retreat_offset_z": float(params_used["drawer_retreat_offset_z"]),
         }
         return self._open_params
 
@@ -274,13 +307,16 @@ class OpenTaskController(BaseController):
             ),
             gripper=robot.gripper,
             events_dt=self._open_events_dt,
-            furniture_type=self.cfg.task.get("operate_type", "door"),
+            furniture_type=self._operate_type,
             door_open_direction="clockwise",
             position_threshold=self._open_position_threshold,
             stage0_offset_x=self._open_stage0_offset_x,
             stage1_offset_x=self._open_stage1_offset_x,
             retreat_offset_x=self._open_retreat_offset_x,
             retreat_offset_y=self._open_retreat_offset_y,
+            drawer_pull_offset_x=self._drawer_pull_offset_x,
+            drawer_retreat_offset_x=self._drawer_retreat_offset_x,
+            drawer_retreat_offset_z=self._drawer_retreat_offset_z,
         )
 
     def _init_infer_mode(self, cfg, robot):
@@ -368,8 +404,8 @@ class OpenTaskController(BaseController):
                     handle_position=state['object_position'],
                     current_joint_positions=state['joint_positions'],
                     gripper_position=state['gripper_position'],
-                    end_effector_orientation=euler_angles_to_quats([90, 90, 0], degrees=True, extrinsic=False),
-                    close_gripper_distance=close_gripper_distance
+                    end_effector_orientation=open_params["end_effector_orientation"],
+                    close_gripper_distance=open_params["close_gripper_distance"],
                 )
             if 'camera_data' in state:
                 self.data_collector.cache_step(
@@ -405,7 +441,7 @@ class OpenTaskController(BaseController):
         if language_instruction is not None:
             state['language_instruction'] = language_instruction
         else:
-            state['language_instruction'] = "Open the door of the object"
+            state['language_instruction'] = f"Open the {self._operate_type} of the object"
         
         action = self.inference_engine.step_inference(state)
         
@@ -466,5 +502,5 @@ class OpenTaskController(BaseController):
             Optional[str]: The language instruction or None if not available
         """
         object_name = re.sub(r'\d+', '', self.state['object_name']).replace('_', ' ').lower()
-        self._language_instruction = f"Open the door of the {object_name}"
+        self._language_instruction = f"Open the {self._operate_type} of the {object_name}"
         return self._language_instruction

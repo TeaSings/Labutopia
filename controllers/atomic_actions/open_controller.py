@@ -23,6 +23,9 @@ class OpenController(BaseController):
         stage1_offset_x: float = 0.015,
         retreat_offset_x: float = 0.06,
         retreat_offset_y: float = 0.04,
+        drawer_pull_offset_x: float = 0.04,
+        drawer_retreat_offset_x: float = 0.12,
+        drawer_retreat_offset_z: float = 0.06,
     ) -> None:
         BaseController.__init__(self, name=name)
         self._event = 0
@@ -38,6 +41,9 @@ class OpenController(BaseController):
         self._stage1_offset_x = stage1_offset_x
         self._retreat_offset_x = retreat_offset_x
         self._retreat_offset_y = retreat_offset_y
+        self._drawer_pull_offset_x = drawer_pull_offset_x
+        self._drawer_retreat_offset_x = drawer_retreat_offset_x
+        self._drawer_retreat_offset_z = drawer_retreat_offset_z
         
         if events_dt is None:
             self._events_dt = [0.0025, 0.005, 0.08, 0.002, 0.05, 0.05, 0.01, 0.008]
@@ -59,6 +65,9 @@ class OpenController(BaseController):
         stage1_offset_x: float = None,
         retreat_offset_x: float = None,
         retreat_offset_y: float = None,
+        drawer_pull_offset_x: float = None,
+        drawer_retreat_offset_x: float = None,
+        drawer_retreat_offset_z: float = None,
     ) -> None:
         if position_threshold is not None:
             self._position_threshold = float(position_threshold) / get_stage_units()
@@ -70,6 +79,12 @@ class OpenController(BaseController):
             self._retreat_offset_x = float(retreat_offset_x)
         if retreat_offset_y is not None:
             self._retreat_offset_y = float(retreat_offset_y)
+        if drawer_pull_offset_x is not None:
+            self._drawer_pull_offset_x = float(drawer_pull_offset_x)
+        if drawer_retreat_offset_x is not None:
+            self._drawer_retreat_offset_x = float(drawer_retreat_offset_x)
+        if drawer_retreat_offset_z is not None:
+            self._drawer_retreat_offset_z = float(drawer_retreat_offset_z)
         
     def forward(
         self,
@@ -136,17 +151,38 @@ class OpenController(BaseController):
     def _execute_phase(self, handle_position, end_effector_orientation, current_joint_positions, gripper_position, revolute_joint_position = None, angle = 50, close_gripper_distance = 0.023):
         """Execute current phase of grasping action"""
         if self.furniture_type == "drawer":
-            return self._execute_drawer_phase(handle_position, end_effector_orientation, current_joint_positions, gripper_position)
-        else:
-            return self._execute_door_phase(handle_position, end_effector_orientation, current_joint_positions, revolute_joint_position, gripper_position, angle, close_gripper_distance)
+            return self._execute_drawer_phase(
+                handle_position,
+                end_effector_orientation,
+                current_joint_positions,
+                gripper_position,
+                close_gripper_distance,
+            )
+        return self._execute_door_phase(
+            handle_position,
+            end_effector_orientation,
+            current_joint_positions,
+            revolute_joint_position,
+            gripper_position,
+            angle,
+            close_gripper_distance,
+        )
     
-    def _execute_drawer_phase(self, handle_position, end_effector_orientation, current_joint_positions, gripper_position):
-        """Execute drawer opening action"""
+    def _execute_drawer_phase(
+        self,
+        handle_position,
+        end_effector_orientation,
+        current_joint_positions,
+        gripper_position,
+        close_gripper_distance,
+    ):
+        """Execute drawer opening action."""
         if self._event == 0:
             handle_position[0] -= self._stage0_offset_x / get_stage_units()
             target_joint_positions = self._cspace_controller.forward(
-                    target_end_effector_position=handle_position, target_end_effector_orientation=end_effector_orientation
-                )
+                target_end_effector_position=handle_position,
+                target_end_effector_orientation=end_effector_orientation,
+            )
             xy_distance = np.linalg.norm(gripper_position[:2] - handle_position[:2])
             if xy_distance < self._position_threshold:
                 self._event += 1
@@ -155,8 +191,9 @@ class OpenController(BaseController):
         elif self._event == 1:
             handle_position[0] -= self._stage1_offset_x
             target_joint_positions = self._cspace_controller.forward(
-                    target_end_effector_position=handle_position, target_end_effector_orientation=end_effector_orientation
-                )
+                target_end_effector_position=handle_position,
+                target_end_effector_orientation=end_effector_orientation,
+            )
             xy_distance = np.linalg.norm(gripper_position[:2] - handle_position[:2])
             if xy_distance < self._position_threshold / 3:
                 self._event += 1
@@ -164,21 +201,20 @@ class OpenController(BaseController):
                 return target_joint_positions
         elif self._event == 2:
             target_joint_positions = [None] * current_joint_positions.shape[0]
-            gripper_distance = 0.01 / get_stage_units()
+            gripper_distance = close_gripper_distance / get_stage_units()
             target_joint_positions[7] = gripper_distance
             target_joint_positions[8] = gripper_distance
             target_joint_positions = ArticulationAction(joint_positions=target_joint_positions)
             self.target_position = handle_position
-            self.target_position[0] -= 0.1 / get_stage_units()
+            self.target_position[0] -= self._drawer_retreat_offset_x / get_stage_units()
         elif self._event == 3:
-            handle_position[0] -= 0.04 / get_stage_units()
+            handle_position[0] -= self._drawer_pull_offset_x / get_stage_units()
             target_joint_positions = self._cspace_controller.forward(
-                target_end_effector_position=handle_position, 
-                target_end_effector_orientation=end_effector_orientation
-            ) 
+                target_end_effector_position=handle_position,
+                target_end_effector_orientation=end_effector_orientation,
+            )
         elif self._event == 4:
-            target_joint_positions = [None] * current_joint_positions.shape[0]
-            target_joint_positions = ArticulationAction(joint_positions=target_joint_positions)
+            target_joint_positions = ArticulationAction(joint_positions=[None] * current_joint_positions.shape[0])
         elif self._event == 5:
             target_joint_positions = [None] * current_joint_positions.shape[0]
             gripper_distance = 0.04 / get_stage_units()
@@ -186,15 +222,14 @@ class OpenController(BaseController):
             target_joint_positions[8] = gripper_distance
             target_joint_positions = ArticulationAction(joint_positions=target_joint_positions)
         elif self._event == 6:
-            handle_position[0] -= 0.12 / get_stage_units()
-            handle_position[2] += 0.06
+            handle_position[0] -= self._drawer_retreat_offset_x / get_stage_units()
+            handle_position[2] += self._drawer_retreat_offset_z
             target_joint_positions = self._cspace_controller.forward(
-                target_end_effector_position=handle_position, 
-                target_end_effector_orientation=end_effector_orientation
+                target_end_effector_position=handle_position,
+                target_end_effector_orientation=end_effector_orientation,
             )
         else:
-            target_joint_positions = [None] * current_joint_positions.shape[0]
-            target_joint_positions = ArticulationAction(joint_positions=target_joint_positions)
+            target_joint_positions = ArticulationAction(joint_positions=[None] * current_joint_positions.shape[0])
         return target_joint_positions
 
     def _execute_door_phase(self, handle_position, end_effector_orientation, current_joint_positions, revolute_joint_position, gripper_position, angle = 50, close_gripper_distance = 0.023):
