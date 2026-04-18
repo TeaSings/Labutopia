@@ -109,6 +109,9 @@ class CloseTaskController(BaseController):
         self._warmup_open_target_reached = False
         self._warmup_ready_handle_position = None
         self._closed_reference_handle_position = None
+        self._door_close_target_distance_threshold = float(
+            self._get_cfg_value(close_cfg, "door_target_distance_threshold", 0.08)
+        )
 
     @staticmethod
     def _get_cfg_value(cfg_section, key, default):
@@ -389,8 +392,6 @@ class CloseTaskController(BaseController):
     def _step_collect_warmup_open(self, state):
         if self._warmup_initial_handle_position is None:
             self._warmup_initial_handle_position = np.asarray(state["object_position"], dtype=float)
-            if self.operate_type == "door":
-                self._closed_reference_handle_position = self._warmup_initial_handle_position.copy()
             if self._is_drawer_already_open_enough(state):
                 self._collect_phase = "close"
                 self.initial_handle_position = np.asarray(state["object_position"], dtype=float)
@@ -548,11 +549,15 @@ class CloseTaskController(BaseController):
         if self.operate_type == "drawer":
             handle_moved_enough = handle_move_distance > max(0.13, self._close_push_distance * 0.85)
             gripper_far_enough = gripper_to_object_distance > 0.04
-        elif self._closed_reference_handle_position is not None:
-            closed_reference_distance = np.linalg.norm(current_pos - self._closed_reference_handle_position)
+        elif self.operate_type == "door":
             handle_moved_enough = handle_move_distance > 0.08
-            handle_closed_enough = closed_reference_distance < 0.05
             gripper_far_enough = gripper_to_object_distance > 0.08
+            target_position = getattr(self.close_controller, "target_position", None)
+            handle_closed_enough = True
+            target_distance = None
+            if target_position is not None:
+                target_distance = np.linalg.norm(current_pos - np.asarray(target_position, dtype=float))
+                handle_closed_enough = target_distance < self._door_close_target_distance_threshold
             success = handle_moved_enough and handle_closed_enough and gripper_far_enough
             if success:
                 self._last_failure_reason = ""
@@ -562,7 +567,10 @@ class CloseTaskController(BaseController):
             if not handle_moved_enough:
                 reasons.append(f"Handle returned distance too short ({handle_move_distance:.4f}<0.08)")
             if not handle_closed_enough:
-                reasons.append(f"Handle not close enough to closed reference ({closed_reference_distance:.4f}>=0.05)")
+                reasons.append(
+                    "Handle not close enough to close target "
+                    f"({target_distance:.4f}>={self._door_close_target_distance_threshold:.2f})"
+                )
             if not gripper_far_enough:
                 reasons.append(f"Gripper too close to object ({gripper_to_object_distance:.4f}<0.08)")
             self._last_failure_reason = " and ".join(reasons)
