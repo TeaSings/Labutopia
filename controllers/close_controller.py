@@ -209,6 +209,25 @@ class CloseTaskController(BaseController):
         target_distance = max(0.08, self._bootstrap_open_target_distance * 0.75)
         return handle_move_distance >= target_distance and gripper_to_object_distance > 0.04
 
+    def _read_local_translation(self, object_path):
+        stage = getattr(self.object_utils, "_stage", None)
+        if stage is None:
+            return None
+
+        prim = stage.GetPrimAtPath(object_path)
+        if not prim.IsValid():
+            return None
+
+        translate_attr = prim.GetAttribute("xformOp:translate")
+        if not translate_attr.IsValid():
+            return None
+
+        value = translate_attr.Get()
+        if value is None:
+            return None
+
+        return np.array([float(value[0]), float(value[1]), float(value[2])], dtype=float)
+
     def _is_drawer_already_open_enough(self, state):
         if self.operate_type != "drawer":
             return False
@@ -218,7 +237,7 @@ class CloseTaskController(BaseController):
         if not drawer_body_path:
             return False
 
-        local_translation = self.object_utils.get_local_translation(drawer_body_path)
+        local_translation = self._read_local_translation(drawer_body_path)
         if local_translation is None:
             return False
 
