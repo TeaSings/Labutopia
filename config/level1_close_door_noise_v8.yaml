@@ -1,0 +1,12 @@
+# V8: 比 v7 稍微放松一点，但仍然比 v6 更紧。
+# 目标是把成功率从 v7 的下边界附近往上抬一点，落到更稳妥的 25%-35% 区间。
+
+defaults:
+  - level1_close_door_noise_v6
+  - _self_
+
+name: Level1_close_door_noise_v8
+
+noise:
+  end_effector_euler_deg: [-20.5, 20.5]
+  door_close_angle_deg: [-73.0, -16.0]
