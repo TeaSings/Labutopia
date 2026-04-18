@@ -21,9 +21,12 @@ infer:
 
 task:
   max_steps: 1000
+  camera_warmup_frames: 45
   operate_type: "door"
+  bootstrap_open_with_controller: true
   obj_paths:
     - path: "/World/DryingBox_03"
+      close_gripper_distance: 0.02
       position_range:
         x: [0.77, 0.85]
         y: [-0.05, 0]
@@ -58,6 +61,21 @@ robot:
 collector:
   type: "default"
   compression: gzip
+  save_frames: -1
+
+open:
+  events_dt: [0.0025, 0.005, 0.08, 0.004, 0.05, 0.05, 0.01, 0.004]
+  position_threshold: 0.01
+  stage0_offset_x: 0.08
+  stage1_offset_x: 0.015
+  retreat_offset_x: 0.06
+  retreat_offset_y: 0.04
+  door_open_angle_deg: 50.0
+  close_gripper_distance: 0.02
+  end_effector_euler_deg: [0.0, 110.0, 0.0]
+
+close:
+  end_effector_euler_deg: [350.0, 90.0, 25.0]
 
 hydra:
   run:

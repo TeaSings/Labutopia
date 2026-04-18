@@ -51,12 +51,12 @@ class CloseTaskController(BaseController):
             self._get_cfg_value(open_cfg, "close_gripper_distance", default_warmup_gripper)
         )
         self._bootstrap_open_with_controller = bool(
-            self.operate_type == "drawer"
-            and self._get_cfg_value(task_cfg, "bootstrap_open_with_controller", True)
+            self._get_cfg_value(task_cfg, "bootstrap_open_with_controller", self.operate_type == "drawer")
         )
         self._bootstrap_open_target_distance = float(
             self._get_cfg_value(task_cfg, "initial_drawer_open_distance", 0.16)
         )
+        self._warmup_door_open_angle = float(self._get_cfg_value(open_cfg, "door_open_angle_deg", 50.0))
         self._warmup_open_events_dt = self._load_sequence(
             open_cfg,
             "events_dt",
@@ -108,6 +108,7 @@ class CloseTaskController(BaseController):
         self._warmup_initial_handle_position = None
         self._warmup_open_target_reached = False
         self._warmup_ready_handle_position = None
+        self._closed_reference_handle_position = None
 
     @staticmethod
     def _get_cfg_value(cfg_section, key, default):
@@ -262,7 +263,8 @@ class CloseTaskController(BaseController):
                 ),
                 gripper=robot.gripper,
                 events_dt=self._warmup_open_events_dt,
-                furniture_type="drawer",
+                furniture_type=self.operate_type,
+                door_open_direction="clockwise",
                 position_threshold=self._warmup_open_position_threshold,
                 stage0_offset_x=self._warmup_stage0_offset_x,
                 stage1_offset_x=self._warmup_stage1_offset_x,
@@ -301,6 +303,7 @@ class CloseTaskController(BaseController):
         self._warmup_initial_handle_position = None
         self._warmup_open_target_reached = False
         self._warmup_ready_handle_position = None
+        self._closed_reference_handle_position = None
         if self.mode == "collect":
             self._episode_properties_set = False
             self._last_params_used = None
@@ -386,6 +389,8 @@ class CloseTaskController(BaseController):
     def _step_collect_warmup_open(self, state):
         if self._warmup_initial_handle_position is None:
             self._warmup_initial_handle_position = np.asarray(state["object_position"], dtype=float)
+            if self.operate_type == "door":
+                self._closed_reference_handle_position = self._warmup_initial_handle_position.copy()
             if self._is_drawer_already_open_enough(state):
                 self._collect_phase = "close"
                 self.initial_handle_position = np.asarray(state["object_position"], dtype=float)
@@ -425,15 +430,28 @@ class CloseTaskController(BaseController):
             self._early_return = True
             return None, True, False
 
-        action = self.warmup_open_controller.forward(
-            handle_position=state["object_position"],
-            current_joint_positions=state["joint_positions"],
-            gripper_position=state["gripper_position"],
-            end_effector_orientation=self._warmup_open_end_effector_orientation,
-            close_gripper_distance=float(
-                state.get("close_gripper_distance", self._warmup_close_gripper_distance)
-            ),
-        )
+        if self.operate_type == "door":
+            action = self.warmup_open_controller.forward(
+                handle_position=state["object_position"],
+                current_joint_positions=state["joint_positions"],
+                revolute_joint_position=state["revolute_joint_position"],
+                gripper_position=state["gripper_position"],
+                end_effector_orientation=self._warmup_open_end_effector_orientation,
+                angle=self._warmup_door_open_angle,
+                close_gripper_distance=float(
+                    state.get("close_gripper_distance", self._warmup_close_gripper_distance)
+                ),
+            )
+        else:
+            action = self.warmup_open_controller.forward(
+                handle_position=state["object_position"],
+                current_joint_positions=state["joint_positions"],
+                gripper_position=state["gripper_position"],
+                end_effector_orientation=self._warmup_open_end_effector_orientation,
+                close_gripper_distance=float(
+                    state.get("close_gripper_distance", self._warmup_close_gripper_distance)
+                ),
+            )
         return action, False, False
 
     def _step_collect(self, state):
@@ -530,6 +548,25 @@ class CloseTaskController(BaseController):
         if self.operate_type == "drawer":
             handle_moved_enough = handle_move_distance > max(0.13, self._close_push_distance * 0.85)
             gripper_far_enough = gripper_to_object_distance > 0.04
+        elif self._closed_reference_handle_position is not None:
+            closed_reference_distance = np.linalg.norm(current_pos - self._closed_reference_handle_position)
+            handle_moved_enough = handle_move_distance > 0.08
+            handle_closed_enough = closed_reference_distance < 0.05
+            gripper_far_enough = gripper_to_object_distance > 0.08
+            success = handle_moved_enough and handle_closed_enough and gripper_far_enough
+            if success:
+                self._last_failure_reason = ""
+                return True
+
+            reasons = []
+            if not handle_moved_enough:
+                reasons.append(f"Handle returned distance too short ({handle_move_distance:.4f}<0.08)")
+            if not handle_closed_enough:
+                reasons.append(f"Handle not close enough to closed reference ({closed_reference_distance:.4f}>=0.05)")
+            if not gripper_far_enough:
+                reasons.append(f"Gripper too close to object ({gripper_to_object_distance:.4f}<0.08)")
+            self._last_failure_reason = " and ".join(reasons)
+            return False
         else:
             handle_moved_enough = current_pos[0] - self.initial_handle_position[0] > 0.08
             gripper_far_enough = gripper_to_object_distance > 0.08
