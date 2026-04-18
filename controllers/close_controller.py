@@ -398,7 +398,7 @@ class CloseTaskController(BaseController):
                 self.check_success_counter = 0
                 print(
                     "[CloseWarmup] "
-                    f"drawer already open enough; skipping warmup at {self.initial_handle_position.tolist()}"
+                    f"object already open enough; skipping warmup at {self.initial_handle_position.tolist()}"
                 )
                 return None, False, False
 
@@ -419,7 +419,7 @@ class CloseTaskController(BaseController):
                 self.check_success_counter = 0
                 print(
                     "[CloseWarmup] "
-                    f"opened drawer to start close phase at {self.initial_handle_position.tolist()}"
+                    f"opened object to start close phase at {self.initial_handle_position.tolist()}"
                 )
                 return None, False, False
 
