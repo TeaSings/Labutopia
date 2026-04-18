@@ -1,0 +1,15 @@
+# V3: 继续强化 failure-biased 噪声，进一步压低成功率。
+# 重点仍然是让 door close 更容易出现“关不严 / 对位偏差”，而不是更容易撞回去。
+
+defaults:
+  - level1_close_door_noise_v2
+  - _self_
+
+name: Level1_close_door_noise_v3
+
+noise:
+  noise_scale: 1.9
+  failure_bias_ratio: 0.95
+  noise_distribution: edge_bias
+  end_effector_euler_deg: [-18.0, 18.0]
+  door_close_angle_deg: [-40.0, -10.0]
