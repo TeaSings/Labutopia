@@ -1,0 +1,15 @@
+# V2: 在 v1 基础上进一步做 failure-biased 噪声。
+# 目标不是让门更容易被撞回去，而是让失败更多来自姿态偏差和关门弧线不足。
+
+defaults:
+  - level1_close_door_noise_v1
+  - _self_
+
+name: Level1_close_door_noise_v2
+
+noise:
+  noise_scale: 1.6
+  failure_bias_ratio: 0.9
+  noise_distribution: edge_bias
+  end_effector_euler_deg: [-14.0, 14.0]
+  door_close_angle_deg: [-28.0, -4.0]
