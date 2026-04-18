@@ -1,0 +1,17 @@
+# V4: 不再依赖放大 noise_scale，而是对关门角使用单边 min_bias。
+# 目标是避免把单边负区间缩放回“更容易成功”的正侧。
+
+defaults:
+  - level1_close_door_noise_v1
+  - _self_
+
+name: Level1_close_door_noise_v4
+
+noise:
+  noise_scale: 1.0
+  failure_bias_ratio: 0.0
+  noise_distribution: uniform
+  end_effector_euler_distribution: edge_bias
+  door_close_angle_distribution: min_bias
+  end_effector_euler_deg: [-18.0, 18.0]
+  door_close_angle_deg: [-42.0, -12.0]

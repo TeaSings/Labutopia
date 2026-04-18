@@ -93,6 +93,15 @@ class CloseTaskController(BaseController):
             self._noise_scale = float(getattr(noise_cfg, "noise_scale", 1.0))
             self._failure_bias_ratio = float(getattr(noise_cfg, "failure_bias_ratio", 0.0))
             self._noise_distribution = str(getattr(noise_cfg, "noise_distribution", "uniform"))
+            self._noise_distribution_by_key = {
+                "push_distance": str(getattr(noise_cfg, "push_distance_distribution", self._noise_distribution)),
+                "end_effector_euler_deg": str(
+                    getattr(noise_cfg, "end_effector_euler_distribution", self._noise_distribution)
+                ),
+                "door_close_angle_deg": str(
+                    getattr(noise_cfg, "door_close_angle_distribution", self._noise_distribution)
+                ),
+            }
             self._noise_range = {
                 "push_distance": list(getattr(noise_cfg, "push_distance", [-0.03, 0.03])),
                 "end_effector_euler_deg": list(getattr(noise_cfg, "end_effector_euler_deg", [-6.0, 6.0])),
@@ -100,6 +109,7 @@ class CloseTaskController(BaseController):
             }
         else:
             self._noise_enabled = False
+            self._noise_distribution_by_key = {}
 
         if getattr(cfg, "mode", None) != "collect":
             self._noise_enabled = False
@@ -164,11 +174,16 @@ class CloseTaskController(BaseController):
             scale = 1.0
         dist = getattr(self, "_noise_distribution", "uniform")
 
-        def sample_in_range(lo, hi):
-            if dist == "edge_bias":
+        def sample_in_range(lo, hi, distribution):
+            if distribution == "edge_bias":
                 u = np.random.beta(0.5, 0.5)
-                return lo + (hi - lo) * u
-            return np.random.uniform(lo, hi)
+            elif distribution == "min_bias":
+                u = np.random.beta(0.6, 2.4)
+            elif distribution == "max_bias":
+                u = np.random.beta(2.4, 0.6)
+            else:
+                u = np.random.uniform(0.0, 1.0)
+            return lo + (hi - lo) * u
 
         def scaled_range(key):
             lo, hi = self._noise_range[key][0], self._noise_range[key][1]
@@ -176,13 +191,29 @@ class CloseTaskController(BaseController):
             half = (hi - lo) / 2 * scale
             return mid - half, mid + half
 
+        def distribution_for(key):
+            return self._noise_distribution_by_key.get(key, dist)
+
         self._episode_noise = {
-            "push_distance": float(sample_in_range(*scaled_range("push_distance"))),
+            "push_distance": float(
+                sample_in_range(*scaled_range("push_distance"), distribution_for("push_distance"))
+            ),
             "end_effector_euler_deg": np.array(
-                [sample_in_range(*scaled_range("end_effector_euler_deg")) for _ in range(3)],
+                [
+                    sample_in_range(
+                        *scaled_range("end_effector_euler_deg"),
+                        distribution_for("end_effector_euler_deg"),
+                    )
+                    for _ in range(3)
+                ],
                 dtype=float,
             ),
-            "door_close_angle_deg": float(sample_in_range(*scaled_range("door_close_angle_deg"))),
+            "door_close_angle_deg": float(
+                sample_in_range(
+                    *scaled_range("door_close_angle_deg"),
+                    distribution_for("door_close_angle_deg"),
+                )
+            ),
         }
 
     @staticmethod
