@@ -1,0 +1,12 @@
+# V7: 在 v6 基础上再轻微收紧一点。
+# 目标是把成功率从 v6 的中间带再往下压一点，但避免回到 v5 的过低区间。
+
+defaults:
+  - level1_close_door_noise_v6
+  - _self_
+
+name: Level1_close_door_noise_v7
+
+noise:
+  end_effector_euler_deg: [-21.0, 21.0]
+  door_close_angle_deg: [-76.0, -18.0]
