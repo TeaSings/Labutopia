@@ -29,6 +29,7 @@ task:
   obj_paths:
     - path: "/World/Cabinet_02"
       handle_path: "/World/Cabinet_02/drawer_handle_top"
+      drawer_body_path: "/World/Cabinet_02/drawer_top"
       close_gripper_distance: 0.01
       position_range:
         x: [0.68, 0.78]

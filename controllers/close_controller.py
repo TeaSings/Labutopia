@@ -20,6 +20,14 @@ class CloseTaskController(BaseController):
         close_cfg = getattr(cfg, "close", None)
         open_cfg = getattr(cfg, "open", None)
         task_cfg = getattr(cfg, "task", None)
+        self._drawer_body_path_by_object = {}
+        if self.operate_type == "drawer":
+            for obj_cfg in list(getattr(task_cfg, "obj_paths", []) or []):
+                obj_path = self._get_cfg_value(obj_cfg, "path", None)
+                if obj_path is None:
+                    continue
+                drawer_body_path = self._get_cfg_value(obj_cfg, "drawer_body_path", f"{obj_path}/drawer_top")
+                self._drawer_body_path_by_object[str(obj_path)] = str(drawer_body_path)
 
         self._close_push_distance = float(self._get_cfg_value(close_cfg, "push_distance", 0.15))
         close_euler_deg = self._load_euler_deg(
@@ -201,9 +209,35 @@ class CloseTaskController(BaseController):
         target_distance = max(0.08, self._bootstrap_open_target_distance * 0.75)
         return handle_move_distance >= target_distance and gripper_to_object_distance > 0.04
 
+    def _is_drawer_already_open_enough(self, state):
+        if self.operate_type != "drawer":
+            return False
+
+        object_path = str(state.get("object_path", "") or "")
+        drawer_body_path = self._drawer_body_path_by_object.get(object_path)
+        if not drawer_body_path:
+            return False
+
+        local_translation = self.object_utils.get_local_translation(drawer_body_path)
+        if local_translation is None:
+            return False
+
+        open_distance = abs(float(local_translation[0]))
+        return open_distance >= max(0.08, self._bootstrap_open_target_distance * 0.75)
+
     def _step_collect_warmup_open(self, state):
         if self._warmup_initial_handle_position is None:
             self._warmup_initial_handle_position = np.asarray(state["object_position"], dtype=float)
+            if self._is_drawer_already_open_enough(state):
+                self._collect_phase = "close"
+                self.initial_handle_position = np.asarray(state["object_position"], dtype=float)
+                self.close_controller.reset()
+                self.check_success_counter = 0
+                print(
+                    "[CloseDrawerWarmup] "
+                    f"drawer already open enough; skipping warmup at {self.initial_handle_position.tolist()}"
+                )
+                return None, False, False
 
         if self._check_warmup_open_success(state):
             self._warmup_open_target_reached = True
