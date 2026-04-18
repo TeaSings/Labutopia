@@ -1,0 +1,13 @@
+defaults:
+  - level1_close_door
+  - _self_
+
+name: Level1_close_door_noise_v1
+
+noise:
+  enabled: true
+  noise_scale: 1.25
+  failure_bias_ratio: 0.7
+  noise_distribution: edge_bias
+  end_effector_euler_deg: [-10.0, 10.0]
+  door_close_angle_deg: [-18.0, 4.0]

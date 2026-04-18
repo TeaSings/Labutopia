@@ -75,6 +75,7 @@ open:
   end_effector_euler_deg: [0.0, 110.0, 0.0]
 
 close:
+  door_close_angle_deg: 50.0
   end_effector_euler_deg: [350.0, 90.0, 25.0]
   door_target_distance_threshold: 0.15
 

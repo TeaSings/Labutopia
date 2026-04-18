@@ -30,6 +30,7 @@ class CloseTaskController(BaseController):
                 self._drawer_body_path_by_object[str(obj_path)] = str(drawer_body_path)
 
         self._close_push_distance = float(self._get_cfg_value(close_cfg, "push_distance", 0.15))
+        self._default_close_door_angle = float(self._get_cfg_value(close_cfg, "door_close_angle_deg", 50.0))
         self._default_close_euler_deg = self._load_euler_deg(
             close_cfg,
             "end_effector_euler_deg",
@@ -95,6 +96,7 @@ class CloseTaskController(BaseController):
             self._noise_range = {
                 "push_distance": list(getattr(noise_cfg, "push_distance", [-0.03, 0.03])),
                 "end_effector_euler_deg": list(getattr(noise_cfg, "end_effector_euler_deg", [-6.0, 6.0])),
+                "door_close_angle_deg": list(getattr(noise_cfg, "door_close_angle_deg", [-12.0, 12.0])),
             }
         else:
             self._noise_enabled = False
@@ -180,6 +182,7 @@ class CloseTaskController(BaseController):
                 [sample_in_range(*scaled_range("end_effector_euler_deg")) for _ in range(3)],
                 dtype=float,
             ),
+            "door_close_angle_deg": float(sample_in_range(*scaled_range("door_close_angle_deg"))),
         }
 
     @staticmethod
@@ -195,6 +198,7 @@ class CloseTaskController(BaseController):
     def _build_close_params(self):
         push_distance = self._close_push_distance
         euler_deg = self._default_close_euler_deg.copy()
+        door_close_angle_deg = float(self._default_close_door_angle)
 
         correction_gt = None
         if self._noise_enabled:
@@ -203,14 +207,17 @@ class CloseTaskController(BaseController):
             noise = self._episode_noise
             push_distance += float(noise["push_distance"])
             euler_deg = euler_deg + noise["end_effector_euler_deg"]
+            door_close_angle_deg += float(noise["door_close_angle_deg"])
             correction_gt = {
                 "push_distance": -float(noise["push_distance"]),
                 "end_effector_euler_deg": (-noise["end_effector_euler_deg"]).tolist(),
+                "door_close_angle_deg": -float(noise["door_close_angle_deg"]),
             }
 
         params_used = {
             "push_distance": float(push_distance),
             "end_effector_euler_deg": euler_deg.tolist(),
+            "door_close_angle_deg": float(door_close_angle_deg),
         }
         return params_used, correction_gt
 
@@ -246,6 +253,7 @@ class CloseTaskController(BaseController):
         self._maybe_set_close_task_properties(state, params_used, correction_gt)
         self._close_params = {
             "push_distance": float(params_used["push_distance"]),
+            "door_close_angle_deg": float(params_used["door_close_angle_deg"]),
             "end_effector_orientation": euler_angles_to_quats(
                 np.asarray(params_used["end_effector_euler_deg"], dtype=float),
                 degrees=True,
@@ -465,6 +473,7 @@ class CloseTaskController(BaseController):
                     revolute_joint_position=state["revolute_joint_position"],
                     gripper_position=state["gripper_position"],
                     end_effector_orientation=close_params["end_effector_orientation"],
+                    angle=close_params["door_close_angle_deg"],
                 )
             else:
                 action = self.close_controller.forward(
