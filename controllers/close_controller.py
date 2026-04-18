@@ -110,7 +110,7 @@ class CloseTaskController(BaseController):
         self._warmup_ready_handle_position = None
         self._closed_reference_handle_position = None
         self._door_close_target_distance_threshold = float(
-            self._get_cfg_value(close_cfg, "door_target_distance_threshold", 0.08)
+            self._get_cfg_value(close_cfg, "door_target_distance_threshold", 0.15)
         )
 
     @staticmethod

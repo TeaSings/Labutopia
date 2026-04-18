@@ -76,7 +76,7 @@ open:
 
 close:
   end_effector_euler_deg: [350.0, 90.0, 25.0]
-  door_target_distance_threshold: 0.08
+  door_target_distance_threshold: 0.15
 
 hydra:
   run:
