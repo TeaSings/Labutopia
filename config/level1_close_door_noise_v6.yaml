@@ -1,0 +1,12 @@
+# V6: 从 v5 回拉一点，保留单边 failure-biased，但减少反向角过多的问题。
+# 目标是把成功率从 v5 的极低区间拉回到更可用的中间带。
+
+defaults:
+  - level1_close_door_noise_v4
+  - _self_
+
+name: Level1_close_door_noise_v6
+
+noise:
+  end_effector_euler_deg: [-20.0, 20.0]
+  door_close_angle_deg: [-70.0, -15.0]
