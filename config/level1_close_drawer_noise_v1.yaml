@@ -1,0 +1,13 @@
+defaults:
+  - level1_close_drawer
+  - _self_
+
+name: Level1_close_drawer_noise_v1
+
+noise:
+  enabled: true
+  noise_scale: 1.0
+  failure_bias_ratio: 0.0
+  noise_distribution: "uniform"
+  push_distance: [-0.04, 0.03]
+  end_effector_euler_deg: [-5.0, 5.0]

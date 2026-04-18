@@ -30,16 +30,21 @@ class CloseTaskController(BaseController):
                 self._drawer_body_path_by_object[str(obj_path)] = str(drawer_body_path)
 
         self._close_push_distance = float(self._get_cfg_value(close_cfg, "push_distance", 0.15))
-        close_euler_deg = self._load_euler_deg(
+        self._default_close_euler_deg = self._load_euler_deg(
             close_cfg,
             "end_effector_euler_deg",
             [350.0, 90.0, 25.0] if self.operate_type == "door" else [90.0, 90.0, 0.0],
         )
         self._close_end_effector_orientation = euler_angles_to_quats(
-            close_euler_deg,
+            self._default_close_euler_deg,
             degrees=True,
             extrinsic=False,
         )
+        self._episode_noise = {}
+        self._episode_properties_set = False
+        self._last_params_used = None
+        self._last_baseline_correction = None
+        self._close_params = None
 
         default_warmup_gripper = 0.023 if self.operate_type == "door" else 0.01
         self._warmup_close_gripper_distance = float(
@@ -81,6 +86,22 @@ class CloseTaskController(BaseController):
             extrinsic=False,
         )
 
+        noise_cfg = getattr(cfg, "noise", None)
+        if noise_cfg and getattr(noise_cfg, "enabled", False):
+            self._noise_enabled = True
+            self._noise_scale = float(getattr(noise_cfg, "noise_scale", 1.0))
+            self._failure_bias_ratio = float(getattr(noise_cfg, "failure_bias_ratio", 0.0))
+            self._noise_distribution = str(getattr(noise_cfg, "noise_distribution", "uniform"))
+            self._noise_range = {
+                "push_distance": list(getattr(noise_cfg, "push_distance", [-0.03, 0.03])),
+                "end_effector_euler_deg": list(getattr(noise_cfg, "end_effector_euler_deg", [-6.0, 6.0])),
+            }
+        else:
+            self._noise_enabled = False
+
+        if getattr(cfg, "mode", None) != "collect":
+            self._noise_enabled = False
+
         super().__init__(cfg, robot)
         self.initial_handle_position = None
         self._collect_phase = "close"
@@ -115,6 +136,119 @@ class CloseTaskController(BaseController):
         if values.size != 3:
             return np.asarray(default, dtype=float)
         return values
+
+    @staticmethod
+    def _get_object_type(state):
+        obj_category = str(state.get("object_category", "") or "").strip()
+        if obj_category:
+            return obj_category
+        object_name = str(state.get("object_name", "") or "").strip()
+        if object_name:
+            return re.sub(r"\d+", "", object_name).replace("_", " ").replace("  ", " ").strip().lower()
+        return "unknown"
+
+    def _sample_noise(self):
+        if not self._noise_enabled:
+            self._episode_noise = {}
+            return
+
+        if self._failure_bias_ratio > 0 and np.random.random() < self._failure_bias_ratio:
+            scale = self._noise_scale
+        else:
+            scale = 1.0
+        dist = getattr(self, "_noise_distribution", "uniform")
+
+        def sample_in_range(lo, hi):
+            if dist == "edge_bias":
+                u = np.random.beta(0.5, 0.5)
+                return lo + (hi - lo) * u
+            return np.random.uniform(lo, hi)
+
+        def scaled_range(key):
+            lo, hi = self._noise_range[key][0], self._noise_range[key][1]
+            mid = (lo + hi) / 2
+            half = (hi - lo) / 2 * scale
+            return mid - half, mid + half
+
+        self._episode_noise = {
+            "push_distance": float(sample_in_range(*scaled_range("push_distance"))),
+            "end_effector_euler_deg": np.array(
+                [sample_in_range(*scaled_range("end_effector_euler_deg")) for _ in range(3)],
+                dtype=float,
+            ),
+        }
+
+    @staticmethod
+    def _snapshot_close_state_for_task_props(state):
+        snapshot = {}
+        if state.get("object_position") is not None:
+            snapshot["object_position"] = [float(x) for x in state["object_position"][:3]]
+        sampled_object_position = state.get("sampled_object_position")
+        if sampled_object_position is not None:
+            snapshot["sampled_object_position"] = [float(x) for x in sampled_object_position[:3]]
+        return snapshot
+
+    def _build_close_params(self):
+        push_distance = self._close_push_distance
+        euler_deg = self._default_close_euler_deg.copy()
+
+        correction_gt = None
+        if self._noise_enabled:
+            if not self._episode_noise:
+                self._sample_noise()
+            noise = self._episode_noise
+            push_distance += float(noise["push_distance"])
+            euler_deg = euler_deg + noise["end_effector_euler_deg"]
+            correction_gt = {
+                "push_distance": -float(noise["push_distance"]),
+                "end_effector_euler_deg": (-noise["end_effector_euler_deg"]).tolist(),
+            }
+
+        params_used = {
+            "push_distance": float(push_distance),
+            "end_effector_euler_deg": euler_deg.tolist(),
+        }
+        return params_used, correction_gt
+
+    def _maybe_set_close_task_properties(self, state, params_used, correction_gt):
+        if self._episode_properties_set or not hasattr(self.data_collector, "set_task_properties"):
+            return
+
+        props = {
+            "action_type": f"close_{self.operate_type}",
+            "params_used": params_used,
+            "object_type": self._get_object_type(state),
+            "source_object_name": state.get("object_name"),
+        }
+        props.update(self._snapshot_close_state_for_task_props(state))
+
+        if self._noise_enabled:
+            props["injected_noise"] = {
+                key: (value.tolist() if hasattr(value, "tolist") else value)
+                for key, value in self._episode_noise.items()
+            }
+            props["correction_gt"] = correction_gt
+
+        self.data_collector.set_task_properties(props)
+        self._episode_properties_set = True
+        self._last_params_used = dict(params_used)
+        self._last_baseline_correction = dict(correction_gt) if correction_gt else None
+
+    def _prepare_close_episode(self, state):
+        if self._close_params is not None:
+            return self._close_params
+
+        params_used, correction_gt = self._build_close_params()
+        self._maybe_set_close_task_properties(state, params_used, correction_gt)
+        self._close_params = {
+            "push_distance": float(params_used["push_distance"]),
+            "end_effector_orientation": euler_angles_to_quats(
+                np.asarray(params_used["end_effector_euler_deg"], dtype=float),
+                degrees=True,
+                extrinsic=False,
+            ),
+        }
+        return self._close_params
 
     def _init_collect_mode(self, cfg, robot):
         super()._init_collect_mode(cfg, robot)
@@ -168,10 +302,15 @@ class CloseTaskController(BaseController):
         self._warmup_open_target_reached = False
         self._warmup_ready_handle_position = None
         if self.mode == "collect":
+            self._episode_properties_set = False
+            self._last_params_used = None
+            self._last_baseline_correction = None
+            self._close_params = None
             self._collect_phase = "warmup_open" if self._bootstrap_open_with_controller else "close"
             if self._bootstrap_open_with_controller:
                 self.warmup_open_controller.reset(events_dt=self._warmup_open_events_dt)
             self.close_controller.reset()
+            self._sample_noise()
         else:
             self.inference_engine.reset()
 
@@ -299,21 +438,22 @@ class CloseTaskController(BaseController):
 
     def _step_collect(self, state):
         if not self.close_controller.is_done():
+            close_params = self._prepare_close_episode(state)
             if self.operate_type == "door":
                 action = self.close_controller.forward(
                     handle_position=state["object_position"],
                     current_joint_positions=state["joint_positions"],
                     revolute_joint_position=state["revolute_joint_position"],
                     gripper_position=state["gripper_position"],
-                    end_effector_orientation=self._close_end_effector_orientation,
+                    end_effector_orientation=close_params["end_effector_orientation"],
                 )
             else:
                 action = self.close_controller.forward(
                     handle_position=state["object_position"],
                     current_joint_positions=state["joint_positions"],
                     gripper_position=state["gripper_position"],
-                    end_effector_orientation=self._close_end_effector_orientation,
-                    push_distance=self._close_push_distance,
+                    end_effector_orientation=close_params["end_effector_orientation"],
+                    push_distance=close_params["push_distance"],
                 )
 
             if "camera_data" in state:
@@ -340,6 +480,15 @@ class CloseTaskController(BaseController):
 
     def _finalize_collect_episode(self, state, is_success):
         self._early_return = False
+        if self._episode_properties_set and hasattr(self.data_collector, "update_task_properties"):
+            updates = {
+                "is_success": bool(is_success),
+                **self._snapshot_close_state_for_task_props(state),
+            }
+            if not is_success and self._last_baseline_correction:
+                updates["correction_gt"] = dict(self._last_baseline_correction)
+            self.data_collector.update_task_properties(updates)
+
         if self._collect_phase == "close":
             self.data_collector.write_cached_data(state["joint_positions"][:-1])
         else:
