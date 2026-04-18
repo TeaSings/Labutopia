@@ -397,7 +397,7 @@ class CloseTaskController(BaseController):
                 self.close_controller.reset()
                 self.check_success_counter = 0
                 print(
-                    "[CloseDrawerWarmup] "
+                    "[CloseWarmup] "
                     f"drawer already open enough; skipping warmup at {self.initial_handle_position.tolist()}"
                 )
                 return None, False, False
@@ -418,12 +418,12 @@ class CloseTaskController(BaseController):
                 self.close_controller.reset()
                 self.check_success_counter = 0
                 print(
-                    "[CloseDrawerWarmup] "
+                    "[CloseWarmup] "
                     f"opened drawer to start close phase at {self.initial_handle_position.tolist()}"
                 )
                 return None, False, False
 
-            print("[CloseDrawerWarmup] Failed to physically open drawer before close phase")
+            print("[CloseWarmup] Failed to physically open object before close phase")
             self._last_failure_reason = "Warmup open failed before close phase"
             self._last_success = False
             self.reset_needed = True
