@@ -1,0 +1,21 @@
+# V4: 比 v3 再轻微收紧一点。
+# 目标是把 47% 往下压到更接近目标区间中段，
+# 但不一下子像过强版本那样掉得太狠。
+
+defaults:
+  - level1_press
+  - _self_
+
+name: Level1_press_noise_v4
+
+noise:
+  enabled: true
+  noise_scale: 1.0
+  failure_bias_ratio: 1.0
+  noise_distribution: edge_bias
+  initial_offset: [0.04, 0.09]
+  press_distance: [-0.09, -0.04]
+  end_effector_euler_deg: [-18.0, 18.0]
+  target_position_offset_x: [-0.07, -0.025]
+  target_position_offset_y: [-0.015, 0.015]
+  target_position_offset_z: [-0.015, 0.015]
