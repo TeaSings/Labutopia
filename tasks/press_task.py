@@ -19,6 +19,7 @@ class PressTask(BaseTask):
         self.button_types = self.cfg.button_types
         task_cfg = getattr(self.cfg, "task", None)
         self.max_steps = int(getattr(task_cfg, "max_steps", 1000))
+        self.randomize_button_material = bool(getattr(task_cfg, "randomize_button_material", True))
                     
     def reset(self):
         super().reset()
@@ -35,10 +36,11 @@ class PressTask(BaseTask):
         self.object_utils.set_object_position(object_path=self.distractor_button1_path, position=positions[1])
         self.object_utils.set_object_position(object_path=self.distractor_button2_path, position=positions[2])
 
-        random_material_path = random.choice(self.button_material_paths[:self.button_types])
-        bind_material_to_object(stage=self.stage,
-                                obj_path=self.cfg.sub_obj_path,
-                                material_path=random_material_path)
+        if self.randomize_button_material:
+            random_material_path = random.choice(self.button_material_paths[:self.button_types])
+            bind_material_to_object(stage=self.stage,
+                                    obj_path=self.cfg.sub_obj_path,
+                                    material_path=random_material_path)
         
     def step(self):
         self.frame_idx += 1
