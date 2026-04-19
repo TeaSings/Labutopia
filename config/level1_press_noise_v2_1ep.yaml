@@ -1,0 +1,6 @@
+defaults:
+  - level1_press_noise_v2
+  - _self_
+
+name: Level1_press_noise_v2_1ep
+max_episodes: 1

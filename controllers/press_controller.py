@@ -33,6 +33,7 @@ class PressTaskController(BaseController):
                 "initial_offset": list(getattr(noise_cfg, "initial_offset", [-0.03, 0.03])),
                 "press_distance": list(getattr(noise_cfg, "press_distance", [-0.02, 0.02])),
                 "end_effector_euler_deg": list(getattr(noise_cfg, "end_effector_euler_deg", [-8.0, 8.0])),
+                "target_position_offset_x": list(getattr(noise_cfg, "target_position_offset_x", [-0.02, 0.02])),
                 "target_position_offset_y": list(getattr(noise_cfg, "target_position_offset_y", [-0.02, 0.02])),
                 "target_position_offset_z": list(getattr(noise_cfg, "target_position_offset_z", [-0.02, 0.02])),
             }
@@ -108,6 +109,7 @@ class PressTaskController(BaseController):
                 [sample_in_range(*scaled_range("end_effector_euler_deg")) for _ in range(3)],
                 dtype=float,
             ),
+            "target_position_offset_x": float(sample_in_range(*scaled_range("target_position_offset_x"))),
             "target_position_offset_y": float(sample_in_range(*scaled_range("target_position_offset_y"))),
             "target_position_offset_z": float(sample_in_range(*scaled_range("target_position_offset_z"))),
         }
@@ -129,6 +131,7 @@ class PressTaskController(BaseController):
         target_position = np.asarray(state["object_position"][:3], dtype=float).copy()
 
         correction_gt = None
+        target_position_offset_x = 0.0
         target_position_offset_y = 0.0
         target_position_offset_z = 0.0
         if self._noise_enabled:
@@ -138,14 +141,17 @@ class PressTaskController(BaseController):
             initial_offset += float(n["initial_offset"])
             press_distance += float(n["press_distance"])
             euler_deg = euler_deg + n["end_effector_euler_deg"]
+            target_position_offset_x = float(n["target_position_offset_x"])
             target_position_offset_y = float(n["target_position_offset_y"])
             target_position_offset_z = float(n["target_position_offset_z"])
+            target_position[0] += target_position_offset_x
             target_position[1] += target_position_offset_y
             target_position[2] += target_position_offset_z
             correction_gt = {
                 "initial_offset": -float(n["initial_offset"]),
                 "press_distance": -float(n["press_distance"]),
                 "end_effector_euler_deg": (-n["end_effector_euler_deg"]).tolist(),
+                "target_position_offset_x": -target_position_offset_x,
                 "target_position_offset_y": -target_position_offset_y,
                 "target_position_offset_z": -target_position_offset_z,
             }
@@ -155,6 +161,7 @@ class PressTaskController(BaseController):
             "press_distance": float(press_distance),
             "end_effector_euler_deg": euler_deg.tolist(),
             "target_position": [float(x) for x in target_position.tolist()],
+            "target_position_offset_x": float(target_position_offset_x),
             "target_position_offset_y": float(target_position_offset_y),
             "target_position_offset_z": float(target_position_offset_z),
             "success_threshold_x": float(self._success_threshold_x),

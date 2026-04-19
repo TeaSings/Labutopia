@@ -1,0 +1,21 @@
+# V2: 修正噪声方向。
+# V1 的 y/z 偏差和轻微 under-press 对当前按钮任务影响太小，
+# 这一版改成主要沿 x 方向制造“按不到/按不够深”。
+
+defaults:
+  - level1_press
+  - _self_
+
+name: Level1_press_noise_v2
+
+noise:
+  enabled: true
+  noise_scale: 1.4
+  failure_bias_ratio: 0.9
+  noise_distribution: edge_bias
+  initial_offset: [0.0, 0.05]
+  press_distance: [-0.055, -0.015]
+  end_effector_euler_deg: [-12.0, 12.0]
+  target_position_offset_x: [-0.04, -0.01]
+  target_position_offset_y: [-0.012, 0.012]
+  target_position_offset_z: [-0.012, 0.012]
