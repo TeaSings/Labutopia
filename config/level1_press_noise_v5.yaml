@@ -1,0 +1,20 @@
+# V5: 比 v4 稍微放松一点，但仍比 v3 更紧。
+# 目标是把成功率从 v4 的 21% 往上抬到接近 30%。
+
+defaults:
+  - level1_press
+  - _self_
+
+name: Level1_press_noise_v5
+
+noise:
+  enabled: true
+  noise_scale: 1.0
+  failure_bias_ratio: 1.0
+  noise_distribution: edge_bias
+  initial_offset: [0.035, 0.085]
+  press_distance: [-0.085, -0.035]
+  end_effector_euler_deg: [-17.0, 17.0]
+  target_position_offset_x: [-0.065, -0.023]
+  target_position_offset_y: [-0.015, 0.015]
+  target_position_offset_z: [-0.015, 0.015]
