@@ -17,6 +17,8 @@ class PressTask(BaseTask):
         self.button_material_paths = self.cfg.button_material_paths
 
         self.button_types = self.cfg.button_types
+        task_cfg = getattr(self.cfg, "task", None)
+        self.max_steps = int(getattr(task_cfg, "max_steps", 1000))
                     
     def reset(self):
         super().reset()
@@ -40,7 +42,7 @@ class PressTask(BaseTask):
         
     def step(self):
         self.frame_idx += 1
-        if not self.check_frame_limits(max_steps=1000):
+        if not self.check_frame_limits(max_steps=self.max_steps):
             return None
             
         object_position = self.object_utils.get_object_xform_position(object_path=self.target_button_path)
@@ -51,4 +53,3 @@ class PressTask(BaseTask):
                 'object_position': object_position,
             }
         )
-

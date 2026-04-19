@@ -35,6 +35,10 @@ infer:
   timeout: 30
   max_retries: 3
 
+task:
+  max_steps: 1000
+  camera_warmup_frames: 45
+
 cameras:
   - prim_path: "/World/Camera1"
     name: "camera_1"
@@ -64,6 +68,14 @@ robot:
 collector:
   type: "default"
   compression: gzip  
+  save_frames: -1
+
+press:
+  events_dt: [0.005, 0.1, 0.005]
+  initial_offset: 0.2
+  press_distance: 0.04
+  end_effector_euler_deg: [0.0, 90.0, 10.0]
+  success_threshold_x: 0.405
 
 hydra:
   run:

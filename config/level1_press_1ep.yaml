@@ -1,0 +1,6 @@
+defaults:
+  - level1_press
+  - _self_
+
+name: Level1_press_1ep
+max_episodes: 1
