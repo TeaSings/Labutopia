@@ -1,0 +1,21 @@
+# V3: 修正单边负区间被 noise_scale 稀释的问题。
+# 对 press 这种“朝按不到/按不够深”方向的单边噪声，直接把区间本身改得更负，
+# 不再靠 noise_scale>1 放大，否则上界会被拉回到更容易成功的一侧。
+
+defaults:
+  - level1_press
+  - _self_
+
+name: Level1_press_noise_v3
+
+noise:
+  enabled: true
+  noise_scale: 1.0
+  failure_bias_ratio: 1.0
+  noise_distribution: edge_bias
+  initial_offset: [0.03, 0.08]
+  press_distance: [-0.08, -0.03]
+  end_effector_euler_deg: [-16.0, 16.0]
+  target_position_offset_x: [-0.06, -0.02]
+  target_position_offset_y: [-0.015, 0.015]
+  target_position_offset_z: [-0.015, 0.015]
