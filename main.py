@@ -76,6 +76,7 @@ from isaacsim.core.api import World
 from isaacsim.core.utils.stage import add_reference_to_stage
 import omni.usd
 from isaacsim.core.utils import extensions
+from pxr import PhysxSchema
 
 extensions.enable_extension("omni.physx.bundle")
 extensions.enable_extension("omni.usdphysics.ui")
@@ -149,6 +150,31 @@ def _print_camera_data_stats(camera_data: dict, prefix: str = "[camera_data]") -
     print(f"{prefix} " + " | ".join(parts))
 
 
+def _enable_gpu_dynamics(stage) -> None:
+    """Enable PhysX GPU dynamics on the physics scene for particle-based lab_003 assets."""
+    candidate_paths = ["/physicsScene", "/World/physicsScene"]
+    for scene_path in candidate_paths:
+        scene_prim = stage.GetPrimAtPath(scene_path)
+        if not scene_prim.IsValid():
+            continue
+        try:
+            scene_api = PhysxSchema.PhysxSceneAPI.Apply(scene_prim)
+            enable_attr = scene_api.GetEnableGPUDynamicsAttr()
+            if not enable_attr.IsValid():
+                enable_attr = scene_api.CreateEnableGPUDynamicsAttr()
+            enable_attr.Set(True)
+
+            broadphase_attr = scene_api.GetBroadphaseTypeAttr()
+            if not broadphase_attr.IsValid():
+                broadphase_attr = scene_api.CreateBroadphaseTypeAttr()
+            broadphase_attr.Set("GPU")
+            print(f"[Main] Enabled GPU dynamics on physics scene: {scene_path}")
+            return
+        except Exception as e:
+            print(f"[Main] Failed to enable GPU dynamics on {scene_path}: {e}")
+    print("[Main] Warning: physics scene not found, GPU dynamics was not enabled.")
+
+
 def main():
     global _black_frame_warned, _black_frame_streak, _black_frame_recovery_count
     hydra.initialize(config_path=args.config_dir, job_name=args.config_name, version_base="1.1")
@@ -187,6 +213,8 @@ def main():
     
     stage = omni.usd.get_context().get_stage()
     add_reference_to_stage(usd_path=os.path.abspath(cfg.usd_path), prim_path="/World")
+    if args.backend == 'gpu':
+        _enable_gpu_dynamics(stage)
     
     ObjectUtils.get_instance(stage)
     
@@ -301,6 +329,7 @@ def main():
             except Exception as e:
                 print(f"[Main] 控制器/仿真器异常，不写入数据，直接重置: {e}")
                 setattr(task_controller, '_early_return', True)
+                task_controller._last_success = False
                 task_controller.reset_needed = True
                 continue
 
@@ -310,6 +339,7 @@ def main():
                 except Exception as e:
                     print(f"[Main] apply_action 异常，不写入数据，直接重置: {e}")
                     setattr(task_controller, '_early_return', True)
+                    task_controller._last_success = False
                     task_controller.reset_needed = True
                     continue
             if done:

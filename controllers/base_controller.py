@@ -146,11 +146,11 @@ class BaseController(ABC):
     
     def reset(self) -> None:
         """Reset the controller state between episodes."""
-        if self._last_success:
-            self.success_count += 1
         skipped = getattr(self, '_early_return', False)
         if skipped:
             self._skipped_count = getattr(self, '_skipped_count', 0) + 1
+        elif self._last_success:
+            self.success_count += 1
         self._episode_num += 1
         attempted = self._episode_num
         if self.mode == "collect":
@@ -174,6 +174,7 @@ class BaseController(ABC):
         self.reset_needed = False
         self._last_success = False
         self._last_failure_reason = ""
+        self._early_return = False
         if self.mode == "collect" or self.mode == "vlm_live":
             self.data_collector.clear_cache()
 

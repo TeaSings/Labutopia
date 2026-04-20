@@ -11,6 +11,7 @@ class PressTask(BaseTask):
         self.object_utils.set_object_position(object_path=self.cfg.instrument_path, position=np.array([0.73, -0.1, 0.64]))
 
         self.target_button_path = self.cfg.target_button_path
+        self.sub_button_path = self.cfg.sub_obj_path
         self.distractor_button1_path = self.cfg.distractor_button1_path
         self.distractor_button2_path = self.cfg.distractor_button2_path
 
@@ -47,11 +48,14 @@ class PressTask(BaseTask):
         if not self.check_frame_limits(max_steps=self.max_steps):
             return None
             
-        object_position = self.object_utils.get_object_xform_position(object_path=self.target_button_path)
+        object_position = self.object_utils.get_geometry_center(object_path=self.sub_button_path)
+        if object_position is None:
+            object_position = self.object_utils.get_object_xform_position(object_path=self.target_button_path)
         
         return self.get_basic_state_info(
-            object_path=self.target_button_path,
+            object_path=self.sub_button_path,
             additional_info={
                 'object_position': object_position,
+                'source_object_name': self.target_button_path.split("/")[-1],
             }
         )

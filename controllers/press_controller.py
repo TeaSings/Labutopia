@@ -176,7 +176,7 @@ class PressTaskController(BaseController):
             "action_type": "press_button",
             "params_used": params_used,
             "object_type": self._get_object_type(state),
-            "source_object_name": state.get("object_name"),
+            "source_object_name": state.get("source_object_name") or state.get("object_name"),
         }
         props.update(self._snapshot_press_state_for_task_props(state))
 
