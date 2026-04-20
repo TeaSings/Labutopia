@@ -25,7 +25,7 @@ infer:
 
 task:
   camera_warmup_frames: 45
-  max_steps: 1000
+  max_steps: 3000
   obj_paths:
     - path: "/World/beaker_2"
       position_range:

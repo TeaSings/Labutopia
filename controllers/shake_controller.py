@@ -53,6 +53,7 @@ class ShakeTaskController(BaseController):
         self._shake_success = False
         self._last_hold_delta = None
         self._early_return = False
+        self._awaiting_finalize = False
 
         super().__init__(cfg, robot)
 
@@ -112,6 +113,7 @@ class ShakeTaskController(BaseController):
         self._shake_success = False
         self._last_hold_delta = None
         self._early_return = False
+        self._awaiting_finalize = False
 
     def reset(self):
         super().reset()
@@ -194,8 +196,11 @@ class ShakeTaskController(BaseController):
                 end_effector_orientation=R.from_euler("xyz", np.radians(self._shake_euler_deg)).as_quat(),
                 initial_position=shake_anchor,
             )
+            if self.shake_controller.is_done():
+                self._awaiting_finalize = True
             return action, False, self.is_success()
 
+        self._awaiting_finalize = False
         self._last_success = self.is_success()
         self._finalize_episode(state)
         self.reset_needed = True
@@ -282,6 +287,10 @@ class ShakeTaskController(BaseController):
     def is_atomic_action_complete(self) -> bool:
         if self.mode != "collect":
             return True
+        if self.reset_needed:
+            return True
+        if self._awaiting_finalize:
+            return False
         return self.pick_controller.is_done() and self.shake_controller.is_done()
 
     def get_language_instruction(self) -> Optional[str]:
