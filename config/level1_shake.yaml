@@ -64,6 +64,27 @@ collector:
   compression: gzip  
   save_frames: -1
 
+shake:
+  pick:
+    events_dt: [0.004, 0.002, 0.005, 0.02, 0.05, 0.004, 0.02]
+    position_threshold: 0.01
+    object_name: "beaker"
+    end_effector_euler_deg: [0.0, 90.0, 30.0]
+    pre_offset_x: 0.05
+    pre_offset_z: 0.05
+    after_offset_z: 0.15
+  motion:
+    events_dt: [0.02, 0.018, 0.018, 0.018, 0.018, 0.018, 0.018, 0.018, 0.018, 0.015]
+    end_effector_euler_deg: [0.0, 90.0, 10.0]
+    shake_distance: 0.10
+    initial_position_offset: [0.0, 0.0, 0.0]
+  success:
+    min_lift_height: 0.05
+    min_shake_span_xy: 0.05
+    required_shake_count: 5
+    hold_steps: 60
+    max_hold_xy_delta: 0.01
+
 hydra:
   run:
     dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

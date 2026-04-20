@@ -5,6 +5,9 @@ class ShakeTask(BaseTask):
     def __init__(self, cfg, world, stage, robot):
         super().__init__(cfg, world, stage, robot)
         self.source_beaker = self.cfg.obj_path
+        task_cfg = getattr(cfg, "task", None)
+        self.max_steps = int(getattr(task_cfg, "max_steps", 2000))
+        self.current_obj_path = self.source_beaker
 
     def reset(self):
         super().reset()
@@ -16,8 +19,9 @@ class ShakeTask(BaseTask):
     def step(self):
         self.frame_idx += 1
         
-        if not self.check_frame_limits(max_steps=2000):
+        if not self.check_frame_limits(max_steps=self.max_steps):
             return None
         
         return self.get_basic_state_info(
-            object_path=self.source_beaker)
+            object_path=self.current_obj_path or self.source_beaker
+        )
