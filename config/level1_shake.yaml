@@ -24,6 +24,7 @@ infer:
   max_retries: 3
 
 task:
+  camera_warmup_frames: 45
   max_steps: 1000
   obj_paths:
     - path: "/World/beaker_2"
@@ -61,6 +62,7 @@ robot:
 collector:
   type: "default"
   compression: gzip  
+  save_frames: -1
 
 hydra:
   run:

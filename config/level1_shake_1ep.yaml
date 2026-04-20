@@ -1,0 +1,6 @@
+defaults:
+  - level1_shake
+  - _self_
+
+name: Level1_shake_1ep
+max_episodes: 1
