@@ -147,7 +147,10 @@ class ShakeTaskController(BaseController):
         self.data_collector.write_cached_data(state["joint_positions"][:-1])
 
     def _pick_target_name(self, state):
-        return str(state.get("object_category") or state.get("object_name") or self._pick_object_name)
+        configured_name = str(self._pick_object_name or "").strip()
+        if configured_name:
+            return configured_name
+        return str(state.get("object_name") or state.get("object_category") or "beaker")
 
     def _shake_anchor_position(self, state):
         gripper_position = state.get("gripper_position")

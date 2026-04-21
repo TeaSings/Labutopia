@@ -30,7 +30,7 @@ task:
     - path: "/World/beaker_2"
       position_range:
         x: [0.19, 0.34]
-        y: [-0.075, 0.075]
+        y: [-0.05, 0.05]
         z: [0.80, 0.80]
 
 cameras:
@@ -68,7 +68,7 @@ shake:
   pick:
     events_dt: [0.004, 0.002, 0.005, 0.02, 0.05, 0.004, 0.02]
     position_threshold: 0.01
-    object_name: "beaker"
+    object_name: "beaker2"
     end_effector_euler_deg: [0.0, 90.0, 30.0]
     pre_offset_x: 0.05
     pre_offset_z: 0.05
