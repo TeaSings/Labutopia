@@ -54,6 +54,7 @@ class ShakeTaskController(BaseController):
 
         self._initial_position = None
         self._shake_positions = []
+        self._last_shake_anchor_xy = None
         self._shake_count = 0
         self._hold_positions = queue.Queue(maxsize=self._hold_steps_required)
         self._hold_step = 0
@@ -116,6 +117,7 @@ class ShakeTaskController(BaseController):
     def _reset_success_trackers(self):
         self._initial_position = None
         self._shake_positions = []
+        self._last_shake_anchor_xy = None
         self._shake_count = 0
         self._hold_positions = queue.Queue(maxsize=self._hold_steps_required)
         self._hold_step = 0
@@ -173,14 +175,14 @@ class ShakeTaskController(BaseController):
         if self._shake_count >= self._required_shake_count:
             return True
         xy = object_position[:2]
-        self._shake_positions.append(xy)
-        if len(self._shake_positions) > 1:
-            start_xy = np.asarray(self._shake_positions[0], dtype=float)
-            end_xy = np.asarray(self._shake_positions[-1], dtype=float)
-            dist = float(np.linalg.norm(end_xy - start_xy))
-            if dist >= self._min_shake_span_xy:
-                self._shake_count += 1
-                self._shake_positions = []
+        if self._last_shake_anchor_xy is None:
+            self._last_shake_anchor_xy = np.asarray(xy, dtype=float).copy()
+            return False
+        current_xy = np.asarray(xy, dtype=float)
+        dist = float(np.linalg.norm(current_xy - self._last_shake_anchor_xy))
+        if dist >= self._min_shake_span_xy:
+            self._shake_count += 1
+            self._last_shake_anchor_xy = current_xy.copy()
         return self._shake_count >= self._required_shake_count
 
     def _update_hold_success(self, object_position: np.ndarray) -> bool:
