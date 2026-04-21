@@ -21,6 +21,8 @@ class ShakeTaskController(BaseController):
         )
         self._pick_position_threshold = float(self._get_cfg_value(pick_cfg, "position_threshold", 0.01))
         self._pick_object_name = str(self._get_cfg_value(pick_cfg, "object_name", "beaker"))
+        pick_gripper_distance = self._get_cfg_value(pick_cfg, "gripper_distance", None)
+        self._pick_gripper_distance = None if pick_gripper_distance is None else float(pick_gripper_distance)
         self._pick_pre_offset_x = float(self._get_cfg_value(pick_cfg, "pre_offset_x", 0.05))
         self._pick_pre_offset_z = float(self._get_cfg_value(pick_cfg, "pre_offset_z", 0.05))
         self._pick_after_offset_z = float(self._get_cfg_value(pick_cfg, "after_offset_z", 0.15))
@@ -181,6 +183,7 @@ class ShakeTaskController(BaseController):
                 pre_offset_x=self._pick_pre_offset_x,
                 pre_offset_z=self._pick_pre_offset_z,
                 after_offset_z=self._pick_after_offset_z,
+                gripper_distances=self._pick_gripper_distance,
             )
             return action, False, False
 
