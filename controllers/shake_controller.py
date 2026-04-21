@@ -51,6 +51,10 @@ class ShakeTaskController(BaseController):
             self._hold_steps_required,
             int(self._get_cfg_value(success_cfg, "post_hold_max_steps", self._hold_steps_required * 3)),
         )
+        self._post_hold_settle_steps = max(
+            0,
+            int(self._get_cfg_value(success_cfg, "post_hold_settle_steps", 0)),
+        )
 
         self._initial_position = None
         self._shake_positions = []
@@ -335,6 +339,12 @@ class ShakeTaskController(BaseController):
         if self._shake_success:
             self._last_failure_reason = ""
             return True
+
+        if self._post_hold_step <= self._post_hold_settle_steps:
+            self._last_failure_reason = (
+                f"Waiting for post-shake settling ({self._post_hold_step}/{self._post_hold_settle_steps})"
+            )
+            return False
 
         return self._update_hold_success(object_position)
 

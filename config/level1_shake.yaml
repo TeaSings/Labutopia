@@ -75,9 +75,9 @@ shake:
     pre_offset_z: 0.05
     after_offset_z: 0.15
   motion:
-    events_dt: [0.02, 0.018, 0.018, 0.018, 0.018, 0.018, 0.018, 0.018, 0.03, 0.03]
+    events_dt: [0.02, 0.018, 0.014, 0.014, 0.014, 0.014, 0.014, 0.014, 0.04, 0.04]
     end_effector_euler_deg: [0.0, 90.0, 10.0]
-    shake_distance: 0.08
+    shake_distance: 0.07
     initial_position_offset: [0.0, 0.0, 0.0]
   success:
     min_lift_height: 0.05
@@ -85,7 +85,8 @@ shake:
     required_shake_count: 4
     hold_steps: 60
     max_hold_xy_delta: 0.0125
-    post_hold_max_steps: 180
+    post_hold_max_steps: 240
+    post_hold_settle_steps: 45
 
 hydra:
   run:
