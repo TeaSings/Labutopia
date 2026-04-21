@@ -82,9 +82,10 @@ shake:
   success:
     min_lift_height: 0.05
     min_shake_span_xy: 0.045
-    required_shake_count: 5
+    required_shake_count: 4
     hold_steps: 60
     max_hold_xy_delta: 0.0125
+    post_hold_max_steps: 180
 
 hydra:
   run:

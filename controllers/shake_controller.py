@@ -3,6 +3,7 @@ from typing import Optional
 
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+from isaacsim.core.utils.types import ArticulationAction
 
 from .atomic_actions.pick_controller import PickController
 from .atomic_actions.shake_controller import ShakeController
@@ -46,6 +47,10 @@ class ShakeTaskController(BaseController):
         self._required_shake_count = max(1, int(self._get_cfg_value(success_cfg, "required_shake_count", 5)))
         self._hold_steps_required = max(1, int(self._get_cfg_value(success_cfg, "hold_steps", 60)))
         self._max_hold_xy_delta = float(self._get_cfg_value(success_cfg, "max_hold_xy_delta", 0.01))
+        self._post_hold_max_steps = max(
+            self._hold_steps_required,
+            int(self._get_cfg_value(success_cfg, "post_hold_max_steps", self._hold_steps_required * 3)),
+        )
 
         self._initial_position = None
         self._shake_positions = []
@@ -56,6 +61,8 @@ class ShakeTaskController(BaseController):
         self._last_hold_delta = None
         self._early_return = False
         self._awaiting_finalize = False
+        self._post_hold_step = 0
+        self._hold_target_position = None
 
         super().__init__(cfg, robot)
 
@@ -116,6 +123,8 @@ class ShakeTaskController(BaseController):
         self._last_hold_delta = None
         self._early_return = False
         self._awaiting_finalize = False
+        self._post_hold_step = 0
+        self._hold_target_position = None
 
     def reset(self):
         super().reset()
@@ -160,6 +169,48 @@ class ShakeTaskController(BaseController):
             return None
         return np.asarray(gripper_position[:3], dtype=float) + self._shake_initial_position_offset
 
+    def _update_shake_count(self, object_position: np.ndarray) -> bool:
+        if self._shake_count >= self._required_shake_count:
+            return True
+        xy = object_position[:2]
+        self._shake_positions.append(xy)
+        if len(self._shake_positions) > 1:
+            start_xy = np.asarray(self._shake_positions[0], dtype=float)
+            end_xy = np.asarray(self._shake_positions[-1], dtype=float)
+            dist = float(np.linalg.norm(end_xy - start_xy))
+            if dist >= self._min_shake_span_xy:
+                self._shake_count += 1
+                self._shake_positions = []
+        return self._shake_count >= self._required_shake_count
+
+    def _update_hold_success(self, object_position: np.ndarray) -> bool:
+        if self._hold_positions.full():
+            self._hold_positions.get()
+            self._hold_step = max(0, self._hold_step - 1)
+        self._hold_positions.put(object_position[:2].copy())
+        self._hold_step += 1
+
+        if self._hold_step < self._hold_steps_required:
+            self._last_failure_reason = (
+                f"Hold phase too short ({self._hold_step}/{self._hold_steps_required})"
+            )
+            return False
+
+        arr = np.asarray(list(self._hold_positions.queue), dtype=float)
+        delta = arr.max(axis=0) - arr.min(axis=0)
+        self._last_hold_delta = delta
+        if np.all(delta <= self._max_hold_xy_delta):
+            self._shake_success = True
+            self._last_failure_reason = ""
+            return True
+
+        self._last_failure_reason = (
+            "Beaker not stabilized after shake "
+            f"(delta_x={delta[0]:.4f}, delta_y={delta[1]:.4f}, "
+            f"threshold={self._max_hold_xy_delta:.4f})"
+        )
+        return False
+
     def _step_collect(self, state):
         target_position = state.get("object_position")
         if target_position is None:
@@ -196,6 +247,7 @@ class ShakeTaskController(BaseController):
                 self.reset_needed = True
                 self._last_success = False
                 return None, True, False
+            self._hold_target_position = np.asarray(shake_anchor, dtype=float)
             self._cache_step(state)
             action = self.shake_controller.forward(
                 current_joint_positions=state["joint_positions"],
@@ -204,16 +256,35 @@ class ShakeTaskController(BaseController):
             )
             if self.shake_controller.is_done():
                 self._awaiting_finalize = True
-            return action, False, self.is_success()
+            self._last_success = False
+            self._evaluate_progress(state, allow_post_hold=False)
+            return action, False, False
 
         self._awaiting_finalize = False
-        self._last_success = self.is_success()
+        self._cache_step(state)
+        self._post_hold_step += 1
+        self._last_success = self._evaluate_progress(state, allow_post_hold=True)
+        if self._last_success:
+            self._finalize_episode(state)
+            self.reset_needed = True
+            return None, True, True
+        if self._post_hold_step < self._post_hold_max_steps:
+            if self._hold_target_position is None:
+                hold_target = self._shake_anchor_position(state)
+                if hold_target is not None:
+                    self._hold_target_position = np.asarray(hold_target, dtype=float)
+            if self._hold_target_position is None:
+                return ArticulationAction(), False, False
+            hold_action = self.rmp_controller.forward(
+                target_end_effector_position=self._hold_target_position,
+                target_end_effector_orientation=R.from_euler("xyz", np.radians(self._shake_euler_deg)).as_quat(),
+            )
+            return hold_action, False, False
+
+        if not self._last_failure_reason:
+            self._last_failure_reason = "Shake post-hold phase exceeded limit without stabilizing"
         self._finalize_episode(state)
         self.reset_needed = True
-        if self._last_success:
-            return None, True, True
-        if not self._last_failure_reason:
-            self._last_failure_reason = "Shake motion completed but success criteria were not met"
         return None, True, False
 
     def _step_infer(self, state):
@@ -226,11 +297,14 @@ class ShakeTaskController(BaseController):
         return action, False, False
 
     def is_success(self):
+        return self._evaluate_progress(self.state, allow_post_hold=True)
+
+    def _evaluate_progress(self, state, allow_post_hold: bool) -> bool:
         if self._initial_position is None:
             self._last_failure_reason = "Initial beaker position unavailable"
             return False
 
-        object_position = self.state.get("object_position")
+        object_position = state.get("object_position")
         if object_position is None:
             self._last_failure_reason = "Current beaker position unavailable"
             return False
@@ -243,61 +317,37 @@ class ShakeTaskController(BaseController):
             )
             return False
 
-        if self._shake_count < self._required_shake_count:
-            xy = object_position[:2]
-            self._shake_positions.append(xy)
-            if len(self._shake_positions) > 1:
-                start_xy = np.asarray(self._shake_positions[0], dtype=float)
-                end_xy = np.asarray(self._shake_positions[-1], dtype=float)
-                dist = float(np.linalg.norm(end_xy - start_xy))
-                if dist >= self._min_shake_span_xy:
-                    self._shake_count += 1
-                    self._shake_positions = []
+        if not self._update_shake_count(object_position):
             if self._shake_count < self._required_shake_count:
                 self._last_failure_reason = (
                     f"Shake count too low ({self._shake_count}/{self._required_shake_count})"
                 )
-                return False
+            return False
+
+        if not allow_post_hold:
+            self._last_failure_reason = (
+                f"Waiting for post-shake stabilization ({self._shake_count}/{self._required_shake_count})"
+            )
+            return False
 
         if self._shake_success:
             self._last_failure_reason = ""
             return True
 
-        if self._hold_positions.full():
-            self._hold_positions.get()
-            self._hold_step = max(0, self._hold_step - 1)
-        self._hold_positions.put(object_position[:2].copy())
-        self._hold_step += 1
-
-        if self._hold_step < self._hold_steps_required:
-            self._last_failure_reason = (
-                f"Hold phase too short ({self._hold_step}/{self._hold_steps_required})"
-            )
-            return False
-
-        arr = np.asarray(list(self._hold_positions.queue), dtype=float)
-        delta = arr.max(axis=0) - arr.min(axis=0)
-        self._last_hold_delta = delta
-        if np.all(delta <= self._max_hold_xy_delta):
-            self._shake_success = True
-            self._last_failure_reason = ""
-            return True
-
-        self._last_failure_reason = (
-            "Beaker not stabilized after shake "
-            f"(delta_x={delta[0]:.4f}, delta_y={delta[1]:.4f}, "
-            f"threshold={self._max_hold_xy_delta:.4f})"
-        )
-        return False
+        return self._update_hold_success(object_position)
 
     def is_atomic_action_complete(self) -> bool:
         if self.mode != "collect":
             return True
         if self.reset_needed:
             return True
-        if self._awaiting_finalize:
+        if not self.pick_controller.is_done():
             return False
-        return self.pick_controller.is_done() and self.shake_controller.is_done()
+        if not self.shake_controller.is_done():
+            return False
+        if self._awaiting_finalize or self._post_hold_step < self._post_hold_max_steps:
+            return False
+        return True
 
     def get_language_instruction(self) -> Optional[str]:
         if self._language_instruction is None:
