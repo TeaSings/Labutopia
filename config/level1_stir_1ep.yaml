@@ -1,0 +1,6 @@
+defaults:
+  - level1_stir
+  - _self_
+
+name: Level1_stir_1ep
+max_episodes: 1
