@@ -1,0 +1,18 @@
+defaults:
+  - level1_shake
+  - _self_
+
+name: Level1_shake_noise_v1
+
+noise:
+  enabled: true
+  noise_scale: 1.0
+  failure_bias_ratio: 0.75
+  noise_distribution: "uniform"
+  pick_gripper_distance: [-0.002, 0.003]
+  pick_end_effector_euler_deg: [-5.0, 5.0]
+  shake_distance: [-0.03, 0.005]
+  shake_end_effector_euler_deg: [-10.0, 10.0]
+  shake_initial_position_offset_x: [-0.01, 0.01]
+  shake_initial_position_offset_y: [-0.025, 0.025]
+  shake_initial_position_offset_z: [-0.02, 0.02]

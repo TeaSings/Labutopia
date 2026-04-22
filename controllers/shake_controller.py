@@ -56,6 +56,30 @@ class ShakeTaskController(BaseController):
             int(self._get_cfg_value(success_cfg, "post_hold_settle_steps", 0)),
         )
 
+        noise_cfg = getattr(cfg, "noise", None)
+        if noise_cfg and getattr(noise_cfg, "enabled", False):
+            self._noise_enabled = True
+            self._noise_scale = float(getattr(noise_cfg, "noise_scale", 1.0))
+            self._failure_bias_ratio = float(getattr(noise_cfg, "failure_bias_ratio", 0.0))
+            self._noise_distribution = str(getattr(noise_cfg, "noise_distribution", "uniform"))
+            self._noise_range = {
+                "pick_gripper_distance": list(getattr(noise_cfg, "pick_gripper_distance", [-0.002, 0.002])),
+                "pick_end_effector_euler_deg": list(getattr(noise_cfg, "pick_end_effector_euler_deg", [-4.0, 4.0])),
+                "shake_distance": list(getattr(noise_cfg, "shake_distance", [-0.02, 0.01])),
+                "shake_end_effector_euler_deg": list(getattr(noise_cfg, "shake_end_effector_euler_deg", [-8.0, 8.0])),
+                "shake_initial_position_offset_x": list(
+                    getattr(noise_cfg, "shake_initial_position_offset_x", [-0.01, 0.01])
+                ),
+                "shake_initial_position_offset_y": list(
+                    getattr(noise_cfg, "shake_initial_position_offset_y", [-0.02, 0.02])
+                ),
+                "shake_initial_position_offset_z": list(
+                    getattr(noise_cfg, "shake_initial_position_offset_z", [-0.015, 0.015])
+                ),
+            }
+        else:
+            self._noise_enabled = False
+
         self._initial_position = None
         self._shake_positions = []
         self._last_shake_anchor_xy = None
@@ -68,6 +92,12 @@ class ShakeTaskController(BaseController):
         self._awaiting_finalize = False
         self._post_hold_step = 0
         self._hold_target_position = None
+        self._episode_noise = {}
+        self._episode_properties_set = False
+        self._shake_params = None
+
+        if getattr(cfg, "mode", None) != "collect":
+            self._noise_enabled = False
 
         super().__init__(cfg, robot)
 
@@ -118,6 +148,44 @@ class ShakeTaskController(BaseController):
     def _init_infer_mode(self, cfg, robot):
         super()._init_infer_mode(cfg, robot)
 
+    def _sample_noise(self):
+        if not self._noise_enabled:
+            self._episode_noise = {}
+            return
+
+        scale = self._noise_scale if (
+            self._failure_bias_ratio > 0 and np.random.random() < self._failure_bias_ratio
+        ) else 1.0
+        dist = getattr(self, "_noise_distribution", "uniform")
+
+        def sample_in_range(lo, hi):
+            if dist == "edge_bias":
+                u = np.random.beta(0.5, 0.5)
+                return lo + (hi - lo) * u
+            return np.random.uniform(lo, hi)
+
+        def scaled_range(key):
+            lo, hi = self._noise_range[key][0], self._noise_range[key][1]
+            mid = (lo + hi) / 2.0
+            half = (hi - lo) / 2.0 * scale
+            return mid - half, mid + half
+
+        self._episode_noise = {
+            "pick_gripper_distance": float(sample_in_range(*scaled_range("pick_gripper_distance"))),
+            "pick_end_effector_euler_deg": np.array(
+                [sample_in_range(*scaled_range("pick_end_effector_euler_deg")) for _ in range(3)],
+                dtype=float,
+            ),
+            "shake_distance": float(sample_in_range(*scaled_range("shake_distance"))),
+            "shake_end_effector_euler_deg": np.array(
+                [sample_in_range(*scaled_range("shake_end_effector_euler_deg")) for _ in range(3)],
+                dtype=float,
+            ),
+            "shake_initial_position_offset_x": float(sample_in_range(*scaled_range("shake_initial_position_offset_x"))),
+            "shake_initial_position_offset_y": float(sample_in_range(*scaled_range("shake_initial_position_offset_y"))),
+            "shake_initial_position_offset_z": float(sample_in_range(*scaled_range("shake_initial_position_offset_z"))),
+        }
+
     def _reset_success_trackers(self):
         self._initial_position = None
         self._shake_positions = []
@@ -131,6 +199,9 @@ class ShakeTaskController(BaseController):
         self._awaiting_finalize = False
         self._post_hold_step = 0
         self._hold_target_position = None
+        self._episode_noise = {}
+        self._episode_properties_set = False
+        self._shake_params = None
 
     def reset(self):
         super().reset()
@@ -160,8 +231,101 @@ class ShakeTaskController(BaseController):
             language_instruction=self.get_language_instruction(),
         )
 
-    def _finalize_episode(self, state):
+    def _finalize_episode(self, state, success: bool):
+        if self._episode_properties_set and hasattr(self.data_collector, "update_task_properties"):
+            self.data_collector.update_task_properties({"is_success": bool(success)})
         self.data_collector.write_cached_data(state["joint_positions"][:-1])
+
+    def _snapshot_shake_state_for_task_props(self, state):
+        snapshot = {}
+        if state.get("object_position") is not None:
+            snapshot["object_position"] = [float(x) for x in state["object_position"][:3]]
+        sampled_object_position = state.get("sampled_object_position")
+        if sampled_object_position is not None:
+            snapshot["sampled_object_position"] = [float(x) for x in sampled_object_position[:3]]
+        return snapshot
+
+    def _build_shake_params(self, state):
+        pick_gripper_distance = self._pick_gripper_distance
+        pick_euler_deg = self._pick_euler_deg.copy()
+        shake_distance = float(self._shake_distance)
+        shake_euler_deg = self._shake_euler_deg.copy()
+        shake_initial_position_offset = self._shake_initial_position_offset.copy()
+        correction_gt = None
+
+        if self._noise_enabled:
+            if not self._episode_noise:
+                self._sample_noise()
+            n = self._episode_noise
+            if pick_gripper_distance is not None:
+                pick_gripper_distance += float(n["pick_gripper_distance"])
+            pick_euler_deg = pick_euler_deg + n["pick_end_effector_euler_deg"]
+            shake_distance += float(n["shake_distance"])
+            shake_euler_deg = shake_euler_deg + n["shake_end_effector_euler_deg"]
+            shake_initial_position_offset = shake_initial_position_offset + np.array(
+                [
+                    float(n["shake_initial_position_offset_x"]),
+                    float(n["shake_initial_position_offset_y"]),
+                    float(n["shake_initial_position_offset_z"]),
+                ],
+                dtype=float,
+            )
+            correction_gt = {
+                "pick_gripper_distance": -float(n["pick_gripper_distance"]),
+                "pick_end_effector_euler_deg": (-n["pick_end_effector_euler_deg"]).tolist(),
+                "shake_distance": -float(n["shake_distance"]),
+                "shake_end_effector_euler_deg": (-n["shake_end_effector_euler_deg"]).tolist(),
+                "shake_initial_position_offset_x": -float(n["shake_initial_position_offset_x"]),
+                "shake_initial_position_offset_y": -float(n["shake_initial_position_offset_y"]),
+                "shake_initial_position_offset_z": -float(n["shake_initial_position_offset_z"]),
+            }
+
+        params_used = {
+            "pick_gripper_distance": None if pick_gripper_distance is None else float(pick_gripper_distance),
+            "pick_end_effector_euler_deg": pick_euler_deg.tolist(),
+            "shake_distance": float(shake_distance),
+            "shake_end_effector_euler_deg": shake_euler_deg.tolist(),
+            "shake_initial_position_offset": [float(x) for x in shake_initial_position_offset.tolist()],
+        }
+        return params_used, correction_gt
+
+    def _maybe_set_shake_task_properties(self, state, params_used, correction_gt):
+        if self._episode_properties_set or not hasattr(self.data_collector, "set_task_properties"):
+            return
+        props = {
+            "action_type": "shake_container",
+            "params_used": params_used,
+            "object_type": str(state.get("object_category") or state.get("object_name") or "beaker"),
+            "source_object_name": state.get("object_name"),
+        }
+        props.update(self._snapshot_shake_state_for_task_props(state))
+        if self._noise_enabled:
+            props["injected_noise"] = {
+                key: (value.tolist() if hasattr(value, "tolist") else value)
+                for key, value in self._episode_noise.items()
+            }
+            props["correction_gt"] = correction_gt
+        self.data_collector.set_task_properties(props)
+        self._episode_properties_set = True
+
+    def _prepare_shake_episode(self, state):
+        if self._shake_params is not None:
+            return self._shake_params
+        params_used, correction_gt = self._build_shake_params(state)
+        self._maybe_set_shake_task_properties(state, params_used, correction_gt)
+        self.shake_controller.reset(events_dt=self._shake_events_dt, shake_distance=params_used["shake_distance"])
+        self._shake_params = {
+            "pick_gripper_distance": params_used["pick_gripper_distance"],
+            "pick_end_effector_orientation": R.from_euler(
+                "xyz", np.radians(np.asarray(params_used["pick_end_effector_euler_deg"], dtype=float))
+            ).as_quat(),
+            "shake_distance": float(params_used["shake_distance"]),
+            "shake_end_effector_orientation": R.from_euler(
+                "xyz", np.radians(np.asarray(params_used["shake_end_effector_euler_deg"], dtype=float))
+            ).as_quat(),
+            "shake_initial_position_offset": np.asarray(params_used["shake_initial_position_offset"], dtype=float),
+        }
+        return self._shake_params
 
     def _pick_target_name(self, state):
         configured_name = str(self._pick_object_name or "").strip()
@@ -169,11 +333,12 @@ class ShakeTaskController(BaseController):
             return configured_name
         return str(state.get("object_name") or state.get("object_category") or "beaker")
 
-    def _shake_anchor_position(self, state):
+    def _shake_anchor_position(self, state, offset=None):
         gripper_position = state.get("gripper_position")
         if gripper_position is None:
             return None
-        return np.asarray(gripper_position[:3], dtype=float) + self._shake_initial_position_offset
+        base_offset = self._shake_initial_position_offset if offset is None else np.asarray(offset, dtype=float)
+        return np.asarray(gripper_position[:3], dtype=float) + base_offset
 
     def _update_shake_count(self, object_position: np.ndarray) -> bool:
         if self._shake_count >= self._required_shake_count:
@@ -229,6 +394,7 @@ class ShakeTaskController(BaseController):
 
         if not self.pick_controller.is_done():
             self._cache_step(state)
+            shake_params = self._prepare_shake_episode(state)
             action = self.pick_controller.forward(
                 picking_position=np.asarray(target_position[:3], dtype=float),
                 current_joint_positions=state["joint_positions"],
@@ -236,16 +402,17 @@ class ShakeTaskController(BaseController):
                 object_name=self._pick_target_name(state),
                 gripper_control=self.gripper_control,
                 gripper_position=state["gripper_position"],
-                end_effector_orientation=R.from_euler("xyz", np.radians(self._pick_euler_deg)).as_quat(),
+                end_effector_orientation=shake_params["pick_end_effector_orientation"],
                 pre_offset_x=self._pick_pre_offset_x,
                 pre_offset_z=self._pick_pre_offset_z,
                 after_offset_z=self._pick_after_offset_z,
-                gripper_distances=self._pick_gripper_distance,
+                gripper_distances=shake_params["pick_gripper_distance"],
             )
             return action, False, False
 
         if not self.shake_controller.is_done():
-            shake_anchor = self._shake_anchor_position(state)
+            shake_params = self._prepare_shake_episode(state)
+            shake_anchor = self._shake_anchor_position(state, offset=shake_params["shake_initial_position_offset"])
             if shake_anchor is None:
                 self._last_failure_reason = "Gripper position unavailable for shake phase"
                 self._early_return = True
@@ -257,7 +424,7 @@ class ShakeTaskController(BaseController):
             self._cache_step(state)
             action = self.shake_controller.forward(
                 current_joint_positions=state["joint_positions"],
-                end_effector_orientation=R.from_euler("xyz", np.radians(self._shake_euler_deg)).as_quat(),
+                end_effector_orientation=shake_params["shake_end_effector_orientation"],
                 initial_position=shake_anchor,
             )
             if self.shake_controller.is_done():
@@ -271,25 +438,27 @@ class ShakeTaskController(BaseController):
         self._post_hold_step += 1
         self._last_success = self._evaluate_progress(state, allow_post_hold=True)
         if self._last_success:
-            self._finalize_episode(state)
+            self._finalize_episode(state, True)
             self.reset_needed = True
             return None, True, True
         if self._post_hold_step < self._post_hold_max_steps:
             if self._hold_target_position is None:
-                hold_target = self._shake_anchor_position(state)
+                shake_params = self._prepare_shake_episode(state)
+                hold_target = self._shake_anchor_position(state, offset=shake_params["shake_initial_position_offset"])
                 if hold_target is not None:
                     self._hold_target_position = np.asarray(hold_target, dtype=float)
             if self._hold_target_position is None:
                 return ArticulationAction(), False, False
+            shake_params = self._prepare_shake_episode(state)
             hold_action = self.rmp_controller.forward(
                 target_end_effector_position=self._hold_target_position,
-                target_end_effector_orientation=R.from_euler("xyz", np.radians(self._shake_euler_deg)).as_quat(),
+                target_end_effector_orientation=shake_params["shake_end_effector_orientation"],
             )
             return hold_action, False, False
 
         if not self._last_failure_reason:
             self._last_failure_reason = "Shake post-hold phase exceeded limit without stabilizing"
-        self._finalize_episode(state)
+        self._finalize_episode(state, False)
         self.reset_needed = True
         return None, True, False
 
