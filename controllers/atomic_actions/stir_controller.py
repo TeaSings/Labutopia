@@ -5,6 +5,7 @@ from isaacsim.core.utils.rotations import euler_angles_to_quat
 import numpy as np
 import typing
 
+
 class StirController(BaseController):
     """
     A position-based controller for performing stirring actions with time-based fallback.
@@ -54,6 +55,9 @@ class StirController(BaseController):
         self._position_threshold = position_threshold
         self._stir_radius = stir_radius / get_stage_units()
         self._stir_speed = stir_speed
+        self._default_position_threshold = position_threshold
+        self._default_stir_radius = stir_radius
+        self._default_stir_speed = stir_speed
         self._start = True
         self._current_stir_angle = 0.0
 
@@ -191,7 +195,13 @@ class StirController(BaseController):
         else:
             return ArticulationAction(joint_positions=[None] * len(current_joint_positions))
 
-    def reset(self, events_dt: typing.Optional[typing.List[float]] = None) -> None:
+    def reset(
+        self,
+        events_dt: typing.Optional[typing.List[float]] = None,
+        position_threshold: typing.Optional[float] = None,
+        stir_radius: typing.Optional[float] = None,
+        stir_speed: typing.Optional[float] = None,
+    ) -> None:
         """Reset controller to initial state."""
         super().reset()
         self._cspace_controller.reset()
@@ -199,7 +209,7 @@ class StirController(BaseController):
         self._t = 0
         self._start = True
         self._current_stir_angle = 0.0
-        
+
         if events_dt is not None:
             if not isinstance(events_dt, (np.ndarray, list)):
                 raise Exception("events_dt must be a list or numpy array")
@@ -209,8 +219,16 @@ class StirController(BaseController):
                 self._events_dt = events_dt
             if len(self._events_dt) != 5:
                 raise Exception(f"events_dt length must be 5, got {len(self._events_dt)}")
+        if position_threshold is None:
+            position_threshold = self._default_position_threshold
+        if stir_radius is None:
+            stir_radius = self._default_stir_radius
+        if stir_speed is None:
+            stir_speed = self._default_stir_speed
+        self._position_threshold = float(position_threshold)
+        self._stir_radius = float(stir_radius) / get_stage_units()
+        self._stir_speed = float(stir_speed)
 
     def is_done(self) -> bool:
         """Check if stirring sequence is complete."""
         return self._event >= len(self._events_dt)
-

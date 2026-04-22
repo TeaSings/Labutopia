@@ -52,7 +52,35 @@ robot:
 
 collector:
   type: "default"
-  compression: gzip  
+  compression: gzip
+  save_frames: -1
+
+task:
+  camera_warmup_frames: 45
+  max_steps: 2400
+  target_position_range_xy: [0.075, 0.075]
+
+stir:
+  pick:
+    events_dt: [0.004, 0.002, 0.005, 0.02, 0.05, 0.004, 0.02]
+    position_threshold: 0.005
+    object_name: "glass_rod"
+    pre_offset_x: 0.1
+    pre_offset_z: 0.12
+    after_offset_z: 0.15
+    gripper_distance: 0.005
+    end_effector_euler_deg: [0.0, 90.0, 30.0]
+  motion:
+    events_dt: [0.004, 0.004, 0.005, 0.001, 0.004]
+    position_threshold: 0.005
+    stir_radius: 0.009
+    stir_speed: 3.0
+    center_position_offset: [0.0, 0.0, 0.0]
+    end_effector_euler_deg: [0.0, 90.0, -10.0]
+  success:
+    min_height: 0.85
+    max_xy_distance: 0.04
+    hold_steps: 240
 
 hydra:
   run:
