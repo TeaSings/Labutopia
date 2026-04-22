@@ -1,0 +1,6 @@
+defaults:
+  - level1_shake_noise_v2
+  - _self_
+
+name: Level1_shake_noise_v2_1ep
+max_episodes: 1
