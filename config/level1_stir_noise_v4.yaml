@@ -1,0 +1,20 @@
+defaults:
+  - level1_stir
+  - _self_
+
+name: Level1_stir_noise_v4
+
+noise:
+  enabled: true
+  noise_scale: 1.0
+  failure_bias_ratio: 0.9
+  noise_distribution: "edge_bias"
+  pick_gripper_distance: [0.0, 0.004]
+  pick_after_offset_z: [-0.044, -0.01]
+  pick_end_effector_euler_deg: [-7.0, 7.0]
+  stir_radius: [-0.0043, -0.0015]
+  stir_speed: [-1.0, 0.3]
+  stir_end_effector_euler_deg: [-14.0, 14.0]
+  stir_center_offset_x: [-0.041, 0.041]
+  stir_center_offset_y: [-0.050, 0.050]
+  stir_center_offset_z: [-0.017, 0.013]
