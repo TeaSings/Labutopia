@@ -67,6 +67,7 @@ class StirTaskController(BaseController):
         self._episode_properties_set = False
         self._stir_params = None
         self._early_return = False
+        self._awaiting_finalize = False
         super().__init__(cfg, robot)
 
     @staticmethod
@@ -136,6 +137,7 @@ class StirTaskController(BaseController):
         self._episode_properties_set = False
         self._stir_params = None
         self._early_return = False
+        self._awaiting_finalize = False
         self.pick_controller.reset(events_dt=self._pick_events_dt)
         if self.mode == "collect":
             self.stir_controller.reset(
@@ -395,9 +397,12 @@ class StirTaskController(BaseController):
                 gripper_position=state["gripper_position"],
                 end_effector_orientation=stir_params["stir_end_effector_orientation"],
             )
+            if self.stir_controller.is_done():
+                self._awaiting_finalize = True
             self.gripper_control.update_grasped_object_position()
             return action, False, False
 
+        self._awaiting_finalize = False
         self.reset_needed = True
         self.gripper_control.release_object()
         self._last_success = self._check_collect_success(state)
@@ -452,6 +457,8 @@ class StirTaskController(BaseController):
         if not self.pick_controller.is_done():
             return False
         if not self.stir_controller.is_done():
+            return False
+        if self._awaiting_finalize:
             return False
         return True
 
