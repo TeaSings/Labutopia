@@ -66,6 +66,8 @@ class CloseController(BaseController):
         angle: float = 50.0,
         revolute_joint_position: np.ndarray = None,
         push_distance: float = None,
+        drawer_approach_offset_x: float = None,
+        drawer_push_offset_x: float = None,
         drawer_contact_offset_y: float = 0.0,
         drawer_contact_offset_z: float = 0.0,
     ) -> ArticulationAction:        
@@ -85,6 +87,8 @@ class CloseController(BaseController):
             gripper_position,
             angle,
             push_distance,
+            drawer_approach_offset_x,
+            drawer_push_offset_x,
             drawer_contact_offset_y,
             drawer_contact_offset_z,
         )
@@ -103,6 +107,8 @@ class CloseController(BaseController):
         gripper_position,
         angle = 50,
         push_distance = None,
+        drawer_approach_offset_x = None,
+        drawer_push_offset_x = None,
         drawer_contact_offset_y = 0.0,
         drawer_contact_offset_z = 0.0,
     ):
@@ -113,6 +119,8 @@ class CloseController(BaseController):
                 current_joint_positions,
                 gripper_position,
                 push_distance,
+                drawer_approach_offset_x,
+                drawer_push_offset_x,
                 drawer_contact_offset_y,
                 drawer_contact_offset_z,
             )
@@ -132,9 +140,21 @@ class CloseController(BaseController):
         current_joint_positions,
         gripper_position,
         push_distance,
+        drawer_approach_offset_x = None,
+        drawer_push_offset_x = None,
         drawer_contact_offset_y = 0.0,
         drawer_contact_offset_z = 0.0,
     ):
+        approach_offset_x = (
+            self.drawer_approach_offset_x
+            if drawer_approach_offset_x is None
+            else float(drawer_approach_offset_x)
+        )
+        push_offset_x = (
+            self.drawer_push_offset_x
+            if drawer_push_offset_x is None
+            else float(drawer_push_offset_x)
+        )
         if self._event == 0:
             target_handle_position = handle_position.copy()
             target_handle_position = self._apply_drawer_contact_offset(
@@ -142,7 +162,7 @@ class CloseController(BaseController):
                 drawer_contact_offset_y,
                 drawer_contact_offset_z,
             )
-            target_handle_position[0] -= self.drawer_approach_offset_x / get_stage_units()
+            target_handle_position[0] -= approach_offset_x / get_stage_units()
             target_joint_positions = self._cspace_controller.forward(
                 target_end_effector_position=target_handle_position,
                 target_end_effector_orientation=end_effector_orientation
@@ -158,7 +178,7 @@ class CloseController(BaseController):
                 drawer_contact_offset_y,
                 drawer_contact_offset_z,
             )
-            target_handle_position[0] += self.drawer_push_offset_x / get_stage_units()
+            target_handle_position[0] += push_offset_x / get_stage_units()
             target_joint_positions = self._cspace_controller.forward(
                 target_end_effector_position=target_handle_position,
                 target_end_effector_orientation=end_effector_orientation

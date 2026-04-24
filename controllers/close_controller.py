@@ -52,6 +52,9 @@ class CloseTaskController(BaseController):
         self._drawer_close_retreat_distance_threshold = float(
             self._get_cfg_value(close_cfg, "drawer_retreat_distance_threshold", 0.06)
         )
+        self._drawer_closed_open_distance_threshold = float(
+            self._get_cfg_value(close_cfg, "drawer_closed_open_distance_threshold", 0.05)
+        )
         self._default_close_door_angle = float(self._get_cfg_value(close_cfg, "door_close_angle_deg", 50.0))
         self._default_close_euler_deg = self._load_euler_deg(
             close_cfg,
@@ -120,6 +123,12 @@ class CloseTaskController(BaseController):
             self._noise_distribution = str(getattr(noise_cfg, "noise_distribution", "uniform"))
             self._noise_distribution_by_key = {
                 "push_distance": str(getattr(noise_cfg, "push_distance_distribution", self._noise_distribution)),
+                "drawer_approach_offset_x": str(
+                    getattr(noise_cfg, "drawer_approach_offset_x_distribution", self._noise_distribution)
+                ),
+                "drawer_push_offset_x": str(
+                    getattr(noise_cfg, "drawer_push_offset_x_distribution", self._noise_distribution)
+                ),
                 "drawer_contact_offset_y": str(
                     getattr(noise_cfg, "drawer_contact_offset_y_distribution", self._noise_distribution)
                 ),
@@ -135,6 +144,8 @@ class CloseTaskController(BaseController):
             }
             self._noise_range = {
                 "push_distance": list(getattr(noise_cfg, "push_distance", [-0.03, 0.03])),
+                "drawer_approach_offset_x": list(getattr(noise_cfg, "drawer_approach_offset_x", [0.0, 0.0])),
+                "drawer_push_offset_x": list(getattr(noise_cfg, "drawer_push_offset_x", [0.0, 0.0])),
                 "drawer_contact_offset_y": list(getattr(noise_cfg, "drawer_contact_offset_y", [0.0, 0.0])),
                 "drawer_contact_offset_z": list(getattr(noise_cfg, "drawer_contact_offset_z", [0.0, 0.0])),
                 "end_effector_euler_deg": list(getattr(noise_cfg, "end_effector_euler_deg", [-6.0, 6.0])),
@@ -231,6 +242,18 @@ class CloseTaskController(BaseController):
             "push_distance": float(
                 sample_in_range(*scaled_range("push_distance"), distribution_for("push_distance"))
             ),
+            "drawer_approach_offset_x": float(
+                sample_in_range(
+                    *scaled_range("drawer_approach_offset_x"),
+                    distribution_for("drawer_approach_offset_x"),
+                )
+            ),
+            "drawer_push_offset_x": float(
+                sample_in_range(
+                    *scaled_range("drawer_push_offset_x"),
+                    distribution_for("drawer_push_offset_x"),
+                )
+            ),
             "drawer_contact_offset_y": float(
                 sample_in_range(
                     *scaled_range("drawer_contact_offset_y"),
@@ -273,6 +296,8 @@ class CloseTaskController(BaseController):
 
     def _build_close_params(self):
         push_distance = self._close_push_distance
+        drawer_approach_offset_x = self._drawer_close_approach_offset_x
+        drawer_push_offset_x = self._drawer_close_push_offset_x
         drawer_contact_offset_y = 0.0
         drawer_contact_offset_z = 0.0
         euler_deg = self._default_close_euler_deg.copy()
@@ -284,12 +309,16 @@ class CloseTaskController(BaseController):
                 self._sample_noise()
             noise = self._episode_noise
             push_distance += float(noise["push_distance"])
+            drawer_approach_offset_x += float(noise["drawer_approach_offset_x"])
+            drawer_push_offset_x += float(noise["drawer_push_offset_x"])
             drawer_contact_offset_y += float(noise["drawer_contact_offset_y"])
             drawer_contact_offset_z += float(noise["drawer_contact_offset_z"])
             euler_deg = euler_deg + noise["end_effector_euler_deg"]
             door_close_angle_deg += float(noise["door_close_angle_deg"])
             correction_gt = {
                 "push_distance": -float(noise["push_distance"]),
+                "drawer_approach_offset_x": -float(noise["drawer_approach_offset_x"]),
+                "drawer_push_offset_x": -float(noise["drawer_push_offset_x"]),
                 "drawer_contact_offset_y": -float(noise["drawer_contact_offset_y"]),
                 "drawer_contact_offset_z": -float(noise["drawer_contact_offset_z"]),
                 "end_effector_euler_deg": (-noise["end_effector_euler_deg"]).tolist(),
@@ -298,6 +327,8 @@ class CloseTaskController(BaseController):
 
         params_used = {
             "push_distance": float(push_distance),
+            "drawer_approach_offset_x": float(drawer_approach_offset_x),
+            "drawer_push_offset_x": float(drawer_push_offset_x),
             "drawer_contact_offset_y": float(drawer_contact_offset_y),
             "drawer_contact_offset_z": float(drawer_contact_offset_z),
             "end_effector_euler_deg": euler_deg.tolist(),
@@ -337,6 +368,8 @@ class CloseTaskController(BaseController):
         self._maybe_set_close_task_properties(state, params_used, correction_gt)
         self._close_params = {
             "push_distance": float(params_used["push_distance"]),
+            "drawer_approach_offset_x": float(params_used["drawer_approach_offset_x"]),
+            "drawer_push_offset_x": float(params_used["drawer_push_offset_x"]),
             "drawer_contact_offset_y": float(params_used["drawer_contact_offset_y"]),
             "drawer_contact_offset_z": float(params_used["drawer_contact_offset_z"]),
             "door_close_angle_deg": float(params_used["door_close_angle_deg"]),
@@ -480,17 +513,23 @@ class CloseTaskController(BaseController):
         if self.operate_type != "drawer":
             return False
 
+        open_distance = self._get_drawer_open_distance(state)
+        if open_distance is None:
+            return False
+
+        return open_distance >= max(0.08, self._bootstrap_open_target_distance * 0.75)
+
+    def _get_drawer_open_distance(self, state):
         object_path = str(state.get("object_path", "") or "")
         drawer_body_path = self._drawer_body_path_by_object.get(object_path)
         if not drawer_body_path:
-            return False
+            return None
 
         local_translation = self._read_local_translation(drawer_body_path)
         if local_translation is None:
-            return False
+            return None
 
-        open_distance = abs(float(local_translation[0]))
-        return open_distance >= max(0.08, self._bootstrap_open_target_distance * 0.75)
+        return abs(float(local_translation[0]))
 
     def _step_collect_warmup_open(self, state):
         if self._warmup_initial_handle_position is None:
@@ -594,6 +633,8 @@ class CloseTaskController(BaseController):
                     gripper_position=state["gripper_position"],
                     end_effector_orientation=close_params["end_effector_orientation"],
                     push_distance=close_params["push_distance"],
+                    drawer_approach_offset_x=close_params["drawer_approach_offset_x"],
+                    drawer_push_offset_x=close_params["drawer_push_offset_x"],
                     drawer_contact_offset_y=close_params["drawer_contact_offset_y"],
                     drawer_contact_offset_z=close_params["drawer_contact_offset_z"],
                 )
@@ -685,8 +726,38 @@ class CloseTaskController(BaseController):
         if self.operate_type == "drawer":
             required_handle_move = max(0.13, self._close_push_distance * 0.85)
             required_gripper_distance = 0.04
+            drawer_open_distance = self._get_drawer_open_distance(state)
+            drawer_closed_enough = (
+                True
+                if drawer_open_distance is None
+                else drawer_open_distance <= self._drawer_closed_open_distance_threshold
+            )
             handle_moved_enough = handle_move_distance > required_handle_move
             gripper_far_enough = gripper_to_object_distance > required_gripper_distance
+            success = handle_moved_enough and gripper_far_enough and drawer_closed_enough
+            if success:
+                self._last_failure_reason = ""
+                self._last_success_progress_reason = (
+                    f"handle_move={handle_move_distance:.4f}, "
+                    f"drawer_open_distance={drawer_open_distance}, "
+                    f"gripper_distance={gripper_to_object_distance:.4f}"
+                )
+                return True
+
+            reasons = []
+            if not handle_moved_enough:
+                reasons.append(f"Handle moved distance too short ({handle_move_distance:.4f}<{required_handle_move:.4f})")
+            if not drawer_closed_enough:
+                reasons.append(
+                    "Drawer not close enough "
+                    f"(open_distance={drawer_open_distance:.4f}>{self._drawer_closed_open_distance_threshold:.4f})"
+                )
+            if not gripper_far_enough:
+                reasons.append(
+                    f"Gripper too close to object ({gripper_to_object_distance:.4f}<{required_gripper_distance:.4f})"
+                )
+            self._last_failure_reason = " and ".join(reasons)
+            return False
         elif self.operate_type == "door":
             handle_moved_enough = handle_move_distance > 0.08
             gripper_far_enough = gripper_to_object_distance > 0.08
