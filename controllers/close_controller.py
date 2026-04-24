@@ -120,6 +120,12 @@ class CloseTaskController(BaseController):
             self._noise_distribution = str(getattr(noise_cfg, "noise_distribution", "uniform"))
             self._noise_distribution_by_key = {
                 "push_distance": str(getattr(noise_cfg, "push_distance_distribution", self._noise_distribution)),
+                "drawer_contact_offset_y": str(
+                    getattr(noise_cfg, "drawer_contact_offset_y_distribution", self._noise_distribution)
+                ),
+                "drawer_contact_offset_z": str(
+                    getattr(noise_cfg, "drawer_contact_offset_z_distribution", self._noise_distribution)
+                ),
                 "end_effector_euler_deg": str(
                     getattr(noise_cfg, "end_effector_euler_distribution", self._noise_distribution)
                 ),
@@ -129,6 +135,8 @@ class CloseTaskController(BaseController):
             }
             self._noise_range = {
                 "push_distance": list(getattr(noise_cfg, "push_distance", [-0.03, 0.03])),
+                "drawer_contact_offset_y": list(getattr(noise_cfg, "drawer_contact_offset_y", [0.0, 0.0])),
+                "drawer_contact_offset_z": list(getattr(noise_cfg, "drawer_contact_offset_z", [0.0, 0.0])),
                 "end_effector_euler_deg": list(getattr(noise_cfg, "end_effector_euler_deg", [-6.0, 6.0])),
                 "door_close_angle_deg": list(getattr(noise_cfg, "door_close_angle_deg", [-12.0, 12.0])),
             }
@@ -223,6 +231,18 @@ class CloseTaskController(BaseController):
             "push_distance": float(
                 sample_in_range(*scaled_range("push_distance"), distribution_for("push_distance"))
             ),
+            "drawer_contact_offset_y": float(
+                sample_in_range(
+                    *scaled_range("drawer_contact_offset_y"),
+                    distribution_for("drawer_contact_offset_y"),
+                )
+            ),
+            "drawer_contact_offset_z": float(
+                sample_in_range(
+                    *scaled_range("drawer_contact_offset_z"),
+                    distribution_for("drawer_contact_offset_z"),
+                )
+            ),
             "end_effector_euler_deg": np.array(
                 [
                     sample_in_range(
@@ -253,6 +273,8 @@ class CloseTaskController(BaseController):
 
     def _build_close_params(self):
         push_distance = self._close_push_distance
+        drawer_contact_offset_y = 0.0
+        drawer_contact_offset_z = 0.0
         euler_deg = self._default_close_euler_deg.copy()
         door_close_angle_deg = float(self._default_close_door_angle)
 
@@ -262,16 +284,22 @@ class CloseTaskController(BaseController):
                 self._sample_noise()
             noise = self._episode_noise
             push_distance += float(noise["push_distance"])
+            drawer_contact_offset_y += float(noise["drawer_contact_offset_y"])
+            drawer_contact_offset_z += float(noise["drawer_contact_offset_z"])
             euler_deg = euler_deg + noise["end_effector_euler_deg"]
             door_close_angle_deg += float(noise["door_close_angle_deg"])
             correction_gt = {
                 "push_distance": -float(noise["push_distance"]),
+                "drawer_contact_offset_y": -float(noise["drawer_contact_offset_y"]),
+                "drawer_contact_offset_z": -float(noise["drawer_contact_offset_z"]),
                 "end_effector_euler_deg": (-noise["end_effector_euler_deg"]).tolist(),
                 "door_close_angle_deg": -float(noise["door_close_angle_deg"]),
             }
 
         params_used = {
             "push_distance": float(push_distance),
+            "drawer_contact_offset_y": float(drawer_contact_offset_y),
+            "drawer_contact_offset_z": float(drawer_contact_offset_z),
             "end_effector_euler_deg": euler_deg.tolist(),
             "door_close_angle_deg": float(door_close_angle_deg),
         }
@@ -309,6 +337,8 @@ class CloseTaskController(BaseController):
         self._maybe_set_close_task_properties(state, params_used, correction_gt)
         self._close_params = {
             "push_distance": float(params_used["push_distance"]),
+            "drawer_contact_offset_y": float(params_used["drawer_contact_offset_y"]),
+            "drawer_contact_offset_z": float(params_used["drawer_contact_offset_z"]),
             "door_close_angle_deg": float(params_used["door_close_angle_deg"]),
             "end_effector_orientation": euler_angles_to_quats(
                 np.asarray(params_used["end_effector_euler_deg"], dtype=float),
@@ -564,6 +594,8 @@ class CloseTaskController(BaseController):
                     gripper_position=state["gripper_position"],
                     end_effector_orientation=close_params["end_effector_orientation"],
                     push_distance=close_params["push_distance"],
+                    drawer_contact_offset_y=close_params["drawer_contact_offset_y"],
+                    drawer_contact_offset_z=close_params["drawer_contact_offset_z"],
                 )
 
             self._cache_collect_step(state)

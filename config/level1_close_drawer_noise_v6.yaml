@@ -1,0 +1,19 @@
+defaults:
+  - level1_close_drawer
+  - _self_
+
+name: Level1_close_drawer_noise_v6
+
+noise:
+  enabled: true
+  noise_scale: 1.2
+  failure_bias_ratio: 0.85
+  noise_distribution: "uniform"
+  push_distance_distribution: "min_bias"
+  drawer_contact_offset_y_distribution: "edge_bias"
+  drawer_contact_offset_z_distribution: "edge_bias"
+  end_effector_euler_distribution: "edge_bias"
+  push_distance: [-0.075, 0.005]
+  drawer_contact_offset_y: [-0.080, 0.080]
+  drawer_contact_offset_z: [-0.055, 0.045]
+  end_effector_euler_deg: [-9.0, 9.0]

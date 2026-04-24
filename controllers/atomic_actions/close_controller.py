@@ -65,7 +65,9 @@ class CloseController(BaseController):
         end_effector_orientation: typing.Optional[np.ndarray] = None,
         angle: float = 50.0,
         revolute_joint_position: np.ndarray = None,
-        push_distance: float = None
+        push_distance: float = None,
+        drawer_contact_offset_y: float = 0.0,
+        drawer_contact_offset_z: float = 0.0,
     ) -> ArticulationAction:        
         if end_effector_orientation is None:
             end_effector_orientation = euler_angles_to_quat([0, 110, 0], degrees=True, extrinsic=False)
@@ -82,7 +84,9 @@ class CloseController(BaseController):
             revolute_joint_position,
             gripper_position,
             angle,
-            push_distance
+            push_distance,
+            drawer_contact_offset_y,
+            drawer_contact_offset_z,
         )
         
         if self._t >= 1.0:
@@ -90,15 +94,54 @@ class CloseController(BaseController):
             self._t = 0
         return target_joint_positions
 
-    def _execute_phase(self, handle_position, end_effector_orientation, current_joint_positions, revolute_joint_position, gripper_position, angle = 50, push_distance = None):
+    def _execute_phase(
+        self,
+        handle_position,
+        end_effector_orientation,
+        current_joint_positions,
+        revolute_joint_position,
+        gripper_position,
+        angle = 50,
+        push_distance = None,
+        drawer_contact_offset_y = 0.0,
+        drawer_contact_offset_z = 0.0,
+    ):
         if self.furniture_type == "drawer":
-            return self._execute_drawer_phase(handle_position, end_effector_orientation, current_joint_positions, gripper_position, push_distance)
+            return self._execute_drawer_phase(
+                handle_position,
+                end_effector_orientation,
+                current_joint_positions,
+                gripper_position,
+                push_distance,
+                drawer_contact_offset_y,
+                drawer_contact_offset_z,
+            )
         else:
             return self._execute_door_phase(handle_position, end_effector_orientation, current_joint_positions, revolute_joint_position, gripper_position, angle)
 
-    def _execute_drawer_phase(self, handle_position, end_effector_orientation, current_joint_positions, gripper_position, push_distance):
+    @staticmethod
+    def _apply_drawer_contact_offset(target_handle_position, offset_y, offset_z):
+        target_handle_position[1] += float(offset_y) / get_stage_units()
+        target_handle_position[2] += float(offset_z) / get_stage_units()
+        return target_handle_position
+
+    def _execute_drawer_phase(
+        self,
+        handle_position,
+        end_effector_orientation,
+        current_joint_positions,
+        gripper_position,
+        push_distance,
+        drawer_contact_offset_y = 0.0,
+        drawer_contact_offset_z = 0.0,
+    ):
         if self._event == 0:
             target_handle_position = handle_position.copy()
+            target_handle_position = self._apply_drawer_contact_offset(
+                target_handle_position,
+                drawer_contact_offset_y,
+                drawer_contact_offset_z,
+            )
             target_handle_position[0] -= self.drawer_approach_offset_x / get_stage_units()
             target_joint_positions = self._cspace_controller.forward(
                 target_end_effector_position=target_handle_position,
@@ -110,6 +153,11 @@ class CloseController(BaseController):
                 self._t = 0
         elif self._event == 1:
             target_handle_position = handle_position.copy()
+            target_handle_position = self._apply_drawer_contact_offset(
+                target_handle_position,
+                drawer_contact_offset_y,
+                drawer_contact_offset_z,
+            )
             target_handle_position[0] += self.drawer_push_offset_x / get_stage_units()
             target_joint_positions = self._cspace_controller.forward(
                 target_end_effector_position=target_handle_position,
@@ -120,6 +168,11 @@ class CloseController(BaseController):
                 self._t = 0
         elif self._event == 2:
             target_handle_position = handle_position.copy()
+            target_handle_position = self._apply_drawer_contact_offset(
+                target_handle_position,
+                drawer_contact_offset_y,
+                drawer_contact_offset_z,
+            )
             target_handle_position[2] += self.drawer_retreat_offset_z / get_stage_units()
             target_joint_positions = self._cspace_controller.forward(
                 target_end_effector_position=target_handle_position,
@@ -131,6 +184,11 @@ class CloseController(BaseController):
                 self._t = 0
         elif self._event == 3:
             target_handle_position = handle_position.copy()
+            target_handle_position = self._apply_drawer_contact_offset(
+                target_handle_position,
+                drawer_contact_offset_y,
+                drawer_contact_offset_z,
+            )
             target_handle_position[0] -= self.drawer_retreat_offset_x / get_stage_units()
             target_handle_position[2] += self.drawer_retreat_offset_z / get_stage_units()
             target_joint_positions = self._cspace_controller.forward(
