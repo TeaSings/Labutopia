@@ -67,6 +67,8 @@ class CloseTaskController(BaseController):
         self._last_params_used = None
         self._last_baseline_correction = None
         self._close_params = None
+        self._best_success_counter = 0
+        self._last_success_progress_reason = ""
 
         default_warmup_gripper = 0.023 if self.operate_type == "door" else 0.01
         self._warmup_close_gripper_distance = float(
@@ -373,6 +375,8 @@ class CloseTaskController(BaseController):
         self._warmup_open_target_reached = False
         self._warmup_ready_handle_position = None
         self._closed_reference_handle_position = None
+        self._best_success_counter = 0
+        self._last_success_progress_reason = ""
         if self.mode == "collect":
             self._episode_properties_set = False
             self._last_params_used = None
@@ -551,6 +555,7 @@ class CloseTaskController(BaseController):
 
             if self._check_success(state):
                 self.check_success_counter += 1
+                self._best_success_counter = max(self._best_success_counter, self.check_success_counter)
             else:
                 self.check_success_counter = 0
 
@@ -561,6 +566,13 @@ class CloseTaskController(BaseController):
             print("Task success!")
         else:
             print("Task failed!")
+            if not self._last_failure_reason and self._best_success_counter > 0:
+                self._last_failure_reason = (
+                    "Success condition was not held long enough "
+                    f"({self._best_success_counter}/{self.REQUIRED_SUCCESS_STEPS})"
+                )
+            elif not self._last_failure_reason:
+                self._last_failure_reason = "Close controller finished before success condition was reached"
             self.print_failure_reason()
         return self._finalize_collect_episode(state, success)
 
@@ -614,8 +626,10 @@ class CloseTaskController(BaseController):
         gripper_to_object_distance = np.linalg.norm(gripper_position - current_pos)
 
         if self.operate_type == "drawer":
-            handle_moved_enough = handle_move_distance > max(0.13, self._close_push_distance * 0.85)
-            gripper_far_enough = gripper_to_object_distance > 0.04
+            required_handle_move = max(0.13, self._close_push_distance * 0.85)
+            required_gripper_distance = 0.04
+            handle_moved_enough = handle_move_distance > required_handle_move
+            gripper_far_enough = gripper_to_object_distance > required_gripper_distance
         elif self.operate_type == "door":
             handle_moved_enough = handle_move_distance > 0.08
             gripper_far_enough = gripper_to_object_distance > 0.08
@@ -643,23 +657,34 @@ class CloseTaskController(BaseController):
             self._last_failure_reason = " and ".join(reasons)
             return False
         else:
-            handle_moved_enough = current_pos[0] - self.initial_handle_position[0] > 0.08
-            gripper_far_enough = gripper_to_object_distance > 0.08
+            required_handle_move = 0.08
+            required_gripper_distance = 0.08
+            handle_move_distance = current_pos[0] - self.initial_handle_position[0]
+            handle_moved_enough = handle_move_distance > required_handle_move
+            gripper_far_enough = gripper_to_object_distance > required_gripper_distance
 
         success = handle_moved_enough and gripper_far_enough
         if success:
             self._last_failure_reason = ""
+            self._last_success_progress_reason = (
+                f"handle_move={handle_move_distance:.4f}, "
+                f"gripper_distance={gripper_to_object_distance:.4f}"
+            )
             return True
 
         if not handle_moved_enough and not gripper_far_enough:
             self._last_failure_reason = (
-                f"Handle moved distance too short ({handle_move_distance:.4f}) and "
-                f"gripper too close to object ({gripper_to_object_distance:.4f})"
+                f"Handle moved distance too short ({handle_move_distance:.4f}<{required_handle_move:.4f}) and "
+                f"gripper too close to object ({gripper_to_object_distance:.4f}<{required_gripper_distance:.4f})"
             )
         elif not handle_moved_enough:
-            self._last_failure_reason = f"Handle moved distance too short ({handle_move_distance:.4f})"
+            self._last_failure_reason = (
+                f"Handle moved distance too short ({handle_move_distance:.4f}<{required_handle_move:.4f})"
+            )
         else:
-            self._last_failure_reason = f"Gripper too close to object ({gripper_to_object_distance:.4f})"
+            self._last_failure_reason = (
+                f"Gripper too close to object ({gripper_to_object_distance:.4f}<{required_gripper_distance:.4f})"
+            )
         return False
 
     def get_language_instruction(self) -> Optional[str]:
