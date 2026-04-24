@@ -30,6 +30,27 @@ class CloseTaskController(BaseController):
                 self._drawer_body_path_by_object[str(obj_path)] = str(drawer_body_path)
 
         self._close_push_distance = float(self._get_cfg_value(close_cfg, "push_distance", 0.15))
+        self._close_events_dt = self._load_sequence(
+            close_cfg,
+            "events_dt",
+            [0.0005, 0.002, 0.03, 0.012] if self.operate_type == "drawer" else [0.0025, 0.005, 0.005],
+            expected_len=4 if self.operate_type == "drawer" else 3,
+        )
+        self._drawer_close_approach_offset_x = float(
+            self._get_cfg_value(close_cfg, "drawer_approach_offset_x", 0.1)
+        )
+        self._drawer_close_push_offset_x = float(
+            self._get_cfg_value(close_cfg, "drawer_push_offset_x", 0.05)
+        )
+        self._drawer_close_retreat_offset_x = float(
+            self._get_cfg_value(close_cfg, "drawer_retreat_offset_x", 0.1)
+        )
+        self._drawer_close_retreat_offset_z = float(
+            self._get_cfg_value(close_cfg, "drawer_retreat_offset_z", 0.08)
+        )
+        self._drawer_close_retreat_distance_threshold = float(
+            self._get_cfg_value(close_cfg, "drawer_retreat_distance_threshold", 0.06)
+        )
         self._default_close_door_angle = float(self._get_cfg_value(close_cfg, "door_close_angle_deg", 50.0))
         self._default_close_euler_deg = self._load_euler_deg(
             close_cfg,
@@ -324,8 +345,14 @@ class CloseTaskController(BaseController):
                 robot_articulation=robot,
             ),
             gripper=robot.gripper,
+            events_dt=self._close_events_dt,
             furniture_type=self.operate_type,
             door_open_direction="clockwise",
+            drawer_approach_offset_x=self._drawer_close_approach_offset_x,
+            drawer_push_offset_x=self._drawer_close_push_offset_x,
+            drawer_retreat_offset_x=self._drawer_close_retreat_offset_x,
+            drawer_retreat_offset_z=self._drawer_close_retreat_offset_z,
+            drawer_retreat_distance_threshold=self._drawer_close_retreat_distance_threshold,
         )
 
     def _init_infer_mode(self, cfg, robot):

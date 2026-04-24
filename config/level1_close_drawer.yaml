@@ -81,7 +81,13 @@ open:
   end_effector_euler_deg: [90.0, 90.0, 0.0]
 
 close:
+  events_dt: [0.0005, 0.002, 0.03, 0.012]
   push_distance: 0.15
+  drawer_approach_offset_x: 0.10
+  drawer_push_offset_x: 0.05
+  drawer_retreat_offset_x: 0.10
+  drawer_retreat_offset_z: 0.08
+  drawer_retreat_distance_threshold: 0.06
   end_effector_euler_deg: [90.0, 90.0, 0.0]
 
 hydra:

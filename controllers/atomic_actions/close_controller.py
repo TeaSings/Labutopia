@@ -17,7 +17,12 @@ class CloseController(BaseController):
         events_dt: typing.Optional[typing.List[float]] = None,
         furniture_type: str = "drawer",
         door_width: float = 0.3,
-        door_open_direction: str = None
+        door_open_direction: str = None,
+        drawer_approach_offset_x: float = 0.1,
+        drawer_push_offset_x: float = 0.05,
+        drawer_retreat_offset_x: float = 0.1,
+        drawer_retreat_offset_z: float = 0.08,
+        drawer_retreat_distance_threshold: float = 0.06,
     ) -> None:
         BaseController.__init__(self, name=name)
         self._event = 0
@@ -28,6 +33,11 @@ class CloseController(BaseController):
         self.position_rotation_interp_iter = None
         self.door_open_direction = door_open_direction
         self.init_handle_position = None
+        self.drawer_approach_offset_x = float(drawer_approach_offset_x)
+        self.drawer_push_offset_x = float(drawer_push_offset_x)
+        self.drawer_retreat_offset_x = float(drawer_retreat_offset_x)
+        self.drawer_retreat_offset_z = float(drawer_retreat_offset_z)
+        self.drawer_retreat_distance_threshold = float(drawer_retreat_distance_threshold)
         
         if self.furniture_type == "drawer":
             self._events_dt = [0.0005, 0.002, 0.05, 0.008]
@@ -89,7 +99,7 @@ class CloseController(BaseController):
     def _execute_drawer_phase(self, handle_position, end_effector_orientation, current_joint_positions, gripper_position, push_distance):
         if self._event == 0:
             target_handle_position = handle_position.copy()
-            target_handle_position[0] -= 0.1 / get_stage_units()
+            target_handle_position[0] -= self.drawer_approach_offset_x / get_stage_units()
             target_joint_positions = self._cspace_controller.forward(
                 target_end_effector_position=target_handle_position,
                 target_end_effector_orientation=end_effector_orientation
@@ -100,7 +110,7 @@ class CloseController(BaseController):
                 self._t = 0
         elif self._event == 1:
             target_handle_position = handle_position.copy()
-            target_handle_position[0] += 0.05 / get_stage_units()
+            target_handle_position[0] += self.drawer_push_offset_x / get_stage_units()
             target_joint_positions = self._cspace_controller.forward(
                 target_end_effector_position=target_handle_position,
                 target_end_effector_orientation=end_effector_orientation
@@ -110,13 +120,29 @@ class CloseController(BaseController):
                 self._t = 0
         elif self._event == 2:
             target_handle_position = handle_position.copy()
-            target_handle_position[0] -= 0.1 / get_stage_units()
+            target_handle_position[2] += self.drawer_retreat_offset_z / get_stage_units()
             target_joint_positions = self._cspace_controller.forward(
                 target_end_effector_position=target_handle_position,
                 target_end_effector_orientation=end_effector_orientation
             )
-            xy_distance = np.linalg.norm(gripper_position[:2] - handle_position[:2])
-            if xy_distance > 0.05:
+            z_distance = abs(gripper_position[2] - target_handle_position[2])
+            if z_distance < self._position_threshold:
+                self._event += 1
+                self._t = 0
+        elif self._event == 3:
+            target_handle_position = handle_position.copy()
+            target_handle_position[0] -= self.drawer_retreat_offset_x / get_stage_units()
+            target_handle_position[2] += self.drawer_retreat_offset_z / get_stage_units()
+            target_joint_positions = self._cspace_controller.forward(
+                target_end_effector_position=target_handle_position,
+                target_end_effector_orientation=end_effector_orientation
+            )
+            target_distance = np.linalg.norm(gripper_position - target_handle_position)
+            gripper_to_handle_xy = np.linalg.norm(gripper_position[:2] - handle_position[:2])
+            if (
+                target_distance < self._position_threshold
+                or gripper_to_handle_xy > self.drawer_retreat_distance_threshold
+            ):
                 self._event += 1
                 self._t = 0
         else:
@@ -183,6 +209,7 @@ class CloseController(BaseController):
         self._event = 0
         self._t = 0
         self.position_rotation_interp_iter = None
+        self.init_handle_position = None
 
     def is_done(self) -> bool:
         """Check if controller has completed all states"""
