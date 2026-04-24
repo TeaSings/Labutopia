@@ -36,6 +36,7 @@ class CloseTaskController(BaseController):
             [0.0005, 0.002, 0.03, 0.012] if self.operate_type == "drawer" else [0.0025, 0.005, 0.005],
             expected_len=4 if self.operate_type == "drawer" else 3,
         )
+        self._post_close_hold_steps = int(self._get_cfg_value(close_cfg, "post_hold_steps", 90))
         self._drawer_close_approach_offset_x = float(
             self._get_cfg_value(close_cfg, "drawer_approach_offset_x", 0.1)
         )
@@ -69,6 +70,7 @@ class CloseTaskController(BaseController):
         self._close_params = None
         self._best_success_counter = 0
         self._last_success_progress_reason = ""
+        self._post_close_hold_counter = 0
 
         default_warmup_gripper = 0.023 if self.operate_type == "door" else 0.01
         self._warmup_close_gripper_distance = float(
@@ -377,6 +379,7 @@ class CloseTaskController(BaseController):
         self._closed_reference_handle_position = None
         self._best_success_counter = 0
         self._last_success_progress_reason = ""
+        self._post_close_hold_counter = 0
         if self.mode == "collect":
             self._episode_properties_set = False
             self._last_params_used = None
@@ -525,6 +528,23 @@ class CloseTaskController(BaseController):
             )
         return action, False, False
 
+    def _cache_collect_step(self, state):
+        if "camera_data" not in state:
+            return
+        self.data_collector.cache_step(
+            camera_images=state["camera_data"],
+            joint_angles=state["joint_positions"][:-1],
+            language_instruction=self.get_language_instruction(),
+        )
+
+    def _update_success_counter(self, state):
+        if self._check_success(state):
+            self.check_success_counter += 1
+            self._best_success_counter = max(self._best_success_counter, self.check_success_counter)
+        else:
+            self.check_success_counter = 0
+        return self.check_success_counter >= self.REQUIRED_SUCCESS_STEPS
+
     def _step_collect(self, state):
         if not self.close_controller.is_done():
             close_params = self._prepare_close_episode(state)
@@ -546,33 +566,38 @@ class CloseTaskController(BaseController):
                     push_distance=close_params["push_distance"],
                 )
 
-            if "camera_data" in state:
-                self.data_collector.cache_step(
-                    camera_images=state["camera_data"],
-                    joint_angles=state["joint_positions"][:-1],
-                    language_instruction=self.get_language_instruction(),
-                )
-
-            if self._check_success(state):
-                self.check_success_counter += 1
-                self._best_success_counter = max(self._best_success_counter, self.check_success_counter)
-            else:
-                self.check_success_counter = 0
+            self._cache_collect_step(state)
+            self._update_success_counter(state)
 
             return action, False, False
 
         success = self.check_success_counter >= self.REQUIRED_SUCCESS_STEPS
+        if not success and self._post_close_hold_counter < self._post_close_hold_steps:
+            if self._post_close_hold_counter == 0:
+                print(
+                    "[ClosePostHold] close primitive done; "
+                    f"checking success for up to {self._post_close_hold_steps} extra steps"
+                )
+            self._post_close_hold_counter += 1
+            self._cache_collect_step(state)
+            success = self._update_success_counter(state)
+            if not success:
+                return None, False, False
+
         if success:
             print("Task success!")
         else:
             print("Task failed!")
             if not self._last_failure_reason and self._best_success_counter > 0:
                 self._last_failure_reason = (
-                    "Success condition was not held long enough "
-                    f"({self._best_success_counter}/{self.REQUIRED_SUCCESS_STEPS})"
+                    "Success condition was not held long enough after post-hold "
+                    f"({self._best_success_counter}/{self.REQUIRED_SUCCESS_STEPS}, "
+                    f"post_hold_steps={self._post_close_hold_steps})"
                 )
             elif not self._last_failure_reason:
-                self._last_failure_reason = "Close controller finished before success condition was reached"
+                self._last_failure_reason = (
+                    "Close controller and post-hold finished before success condition was reached"
+                )
             self.print_failure_reason()
         return self._finalize_collect_episode(state, success)
 
