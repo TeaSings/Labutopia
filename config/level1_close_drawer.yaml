@@ -83,7 +83,7 @@ open:
 close:
   events_dt: [0.0005, 0.002, 0.03, 0.012]
   post_hold_steps: 90
-  drawer_closed_open_distance_threshold: 0.05
+  drawer_closed_open_distance_threshold: 0.06
   push_distance: 0.15
   drawer_approach_offset_x: 0.10
   drawer_push_offset_x: 0.05
