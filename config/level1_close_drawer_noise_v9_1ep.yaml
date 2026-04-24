@@ -1,0 +1,6 @@
+defaults:
+  - level1_close_drawer_noise_v9
+  - _self_
+
+name: Level1_close_drawer_noise_v9_1ep
+max_episodes: 1
