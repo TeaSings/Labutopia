@@ -1,0 +1,16 @@
+# V3: lower success without changing shared close controllers.
+# V2 was still ~59% on 32 episodes. Keep the close-angle range close to v2,
+# but make end-effector orientation edge-biased so some samples fail by poor
+# contact instead of only by insufficient close angle.
+
+defaults:
+  - level1_close_door_noise_v2
+  - _self_
+
+name: Level1_close_door_noise_v3
+
+noise:
+  end_effector_euler_distribution: edge_bias
+  door_close_angle_distribution: uniform
+  end_effector_euler_deg: [-18.0, 18.0]
+  door_close_angle_deg: [-62.0, -14.0]
