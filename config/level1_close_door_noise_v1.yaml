@@ -1,0 +1,19 @@
+# New close-door noise baseline after switching success to clean close target.
+# Keep this independent from the old v1-v8 configs, which were tuned against
+# the noisy target and can falsely pass partially closed doors.
+
+defaults:
+  - level1_close_door
+  - _self_
+
+name: Level1_close_door_noise_v1
+
+noise:
+  enabled: true
+  noise_scale: 1.0
+  failure_bias_ratio: 0.0
+  noise_distribution: uniform
+  end_effector_euler_distribution: uniform
+  door_close_angle_distribution: uniform
+  end_effector_euler_deg: [-10.0, 10.0]
+  door_close_angle_deg: [-34.0, -8.0]
