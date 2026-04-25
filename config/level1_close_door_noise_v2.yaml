@@ -1,0 +1,13 @@
+# V2: strengthen the new clean-target close-door noise.
+# V1 was still ~73% on the first 11 episodes, with failures barely above the
+# 0.15 clean-target threshold, so increase negative close-angle noise.
+
+defaults:
+  - level1_close_door_noise_v1
+  - _self_
+
+name: Level1_close_door_noise_v2
+
+noise:
+  end_effector_euler_deg: [-12.0, 12.0]
+  door_close_angle_deg: [-58.0, -12.0]
