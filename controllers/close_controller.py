@@ -531,6 +531,18 @@ class CloseTaskController(BaseController):
 
         return abs(float(local_translation[0]))
 
+    def _get_door_closed_reference_position(self, state):
+        revolute_joint_position = state.get("revolute_joint_position")
+        if revolute_joint_position is None or self.initial_handle_position is None:
+            return None
+
+        start_position = np.asarray(self.initial_handle_position, dtype=float)
+        joint_position = np.asarray(revolute_joint_position, dtype=float)
+        angle = float(self._default_close_door_angle)
+        if joint_position[1] > start_position[1]:
+            angle = -angle
+        return self.close_controller.rotate_around_z_axis(start_position, joint_position, -angle)
+
     def _step_collect_warmup_open(self, state):
         if self._warmup_initial_handle_position is None:
             self._warmup_initial_handle_position = np.asarray(state["object_position"], dtype=float)
@@ -761,8 +773,8 @@ class CloseTaskController(BaseController):
         elif self.operate_type == "door":
             handle_moved_enough = handle_move_distance > 0.08
             gripper_far_enough = gripper_to_object_distance > 0.08
-            target_position = getattr(self.close_controller, "target_position", None)
-            handle_closed_enough = True
+            target_position = self._get_door_closed_reference_position(state)
+            handle_closed_enough = False
             target_distance = None
             if target_position is not None:
                 target_distance = np.linalg.norm(current_pos - np.asarray(target_position, dtype=float))
@@ -776,10 +788,13 @@ class CloseTaskController(BaseController):
             if not handle_moved_enough:
                 reasons.append(f"Handle returned distance too short ({handle_move_distance:.4f}<0.08)")
             if not handle_closed_enough:
-                reasons.append(
-                    "Handle not close enough to close target "
-                    f"({target_distance:.4f}>={self._door_close_target_distance_threshold:.2f})"
-                )
+                if target_distance is None:
+                    reasons.append("Door closed reference unavailable")
+                else:
+                    reasons.append(
+                        "Handle not close enough to clean close target "
+                        f"({target_distance:.4f}>={self._door_close_target_distance_threshold:.2f})"
+                    )
             if not gripper_far_enough:
                 reasons.append(f"Gripper too close to object ({gripper_to_object_distance:.4f}<0.08)")
             self._last_failure_reason = " and ".join(reasons)
