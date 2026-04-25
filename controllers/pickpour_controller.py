@@ -168,6 +168,45 @@ class PickPourTaskController(BaseController):
         
         return False
 
+    def _format_failure_reason(self):
+        if self.last_error_info is None:
+            return f"{self.current_phase.value} phase failed after controller completed"
+
+        phase = self.last_error_info.get('phase', self.current_phase.value)
+        if phase == 'PICKING':
+            current_height = float(self.last_error_info.get('current_height', 0.0))
+            required_height = float(self.last_error_info.get('required_height', 0.0))
+            return f"Pick lift height too low ({current_height:.4f}<={required_height:.4f})"
+
+        error = self.last_error_info.get('error')
+        if error:
+            return f"Pour phase failed: {error}"
+
+        if 'current_distance' in self.last_error_info and 'required_distance' in self.last_error_info:
+            current_distance = float(self.last_error_info['current_distance'])
+            required_distance = float(self.last_error_info['required_distance'])
+            return f"Pour target distance too far ({current_distance:.4f}>{required_distance:.4f})"
+
+        if 'current_height' in self.last_error_info and 'required_height' in self.last_error_info:
+            current_height = float(self.last_error_info['current_height'])
+            required_height = float(self.last_error_info['required_height'])
+            return f"Pour object height too low ({current_height:.4f}<={required_height:.4f})"
+
+        return f"{phase} phase failed after controller completed"
+
+    def _finalize_collect_episode(self, is_success):
+        if hasattr(self.data_collector, "update_task_properties"):
+            self.data_collector.update_task_properties({
+                "is_success": bool(is_success),
+                "final_object_position": np.asarray(self.state["object_position"], dtype=float).tolist(),
+                "target_position": np.asarray(self.state["target_position"], dtype=float).tolist(),
+            })
+
+        self.data_collector.write_cached_data(self.state['joint_positions'][:-1])
+        self._last_success = bool(is_success)
+        self.current_phase = Phase.FINISHED
+        return None, True, bool(is_success)
+
     def step(self, state):
         """Execute one step of control.
         
@@ -198,10 +237,7 @@ class PickPourTaskController(BaseController):
                 return None, False, False
             elif self.current_phase == Phase.POURING:
                 print("Pour task success!")
-                self.data_collector.write_cached_data(state['joint_positions'][:-1])
-                self._last_success = True
-                self.current_phase = Phase.FINISHED
-                return None, True, True
+                return self._finalize_collect_episode(True)
         
         if self.current_phase == Phase.FINISHED:
             self.reset_needed = True
@@ -242,12 +278,13 @@ class PickPourTaskController(BaseController):
             return action, False, False
 
         print(f"{self.current_phase.value} task failed!")
-        if self.last_error_info is not None:
-            print(f"Phase failure details: {self.last_error_info}")
-        self.data_collector.clear_cache()
-        self._last_success = False
-        self.current_phase = Phase.FINISHED
-        return None, True, False
+        self._last_failure_reason = self._format_failure_reason()
+        return self._finalize_collect_episode(False)
+
+    def is_atomic_action_complete(self) -> bool:
+        if self.mode != "collect":
+            return True
+        return self.current_phase == Phase.FINISHED
 
     def _step_infer(self, state):
         """Execute inference mode step."""
