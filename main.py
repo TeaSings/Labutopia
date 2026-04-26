@@ -1,6 +1,18 @@
 import os
 import sys
 
+
+def _enable_line_buffered_output() -> None:
+    # Keep LabUtopia episode logs visible when stdout/stderr are piped through tee.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(line_buffering=True, write_through=True)
+        except (AttributeError, ValueError):
+            pass
+
+
+_enable_line_buffered_output()
+
 # 相机/Replicator：必须在 SimulationApp 之前设置。仅 headless 时设会导致「带窗口运行仍全黑」。
 # 若需关闭可在外部先设 ENABLE_CAMERAS=0。
 if "ENABLE_CAMERAS" not in os.environ:
