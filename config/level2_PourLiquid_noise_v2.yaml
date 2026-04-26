@@ -1,0 +1,11 @@
+# V2: v1 was too strong and mostly missed the target beaker during pour.
+# Keep the same light pick/orientation noise, but tighten pour XY target noise.
+
+defaults:
+  - level2_PourLiquid_noise_v1
+  - _self_
+
+name: Level2_PourLiquid_noise_v2
+
+noise:
+  pour_target_position_xy_noise: [-0.075, 0.075]

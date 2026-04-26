@@ -1,0 +1,6 @@
+defaults:
+  - level2_PourLiquid_noise_v2
+  - _self_
+
+name: Level2_PourLiquid_noise_v2_1ep
+max_episodes: 1
