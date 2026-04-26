@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+from pathlib import Path
 from typing import List, Optional
 
-import carb
 import numpy as np
 from isaacsim.core.api.robots.robot import Robot
 from isaacsim.core.prims import SingleRigidPrim
@@ -27,6 +28,24 @@ from isaacsim.sensors.physics import ContactSensor
 from isaacsim.sensors.camera import Camera
 
 from utils.object_utils import ObjectUtils
+
+
+def _resolve_default_franka_usd_path() -> str:
+    env_path = os.environ.get("LABUTOPIA_FRANKA_USD")
+    if env_path:
+        return env_path
+
+    repo_asset_path = Path(__file__).resolve().parents[2] / "assets" / "robots" / "Franka.usd"
+    if repo_asset_path.exists():
+        return str(repo_asset_path)
+
+    assets_root_path = get_assets_root_path()
+    if assets_root_path is None:
+        raise RuntimeError(
+            "Could not find Franka USD. Expected local asset at "
+            f"{repo_asset_path} or Isaac Sim assets root."
+        )
+    return assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd"
 
 
 class Franka(Robot):
@@ -67,10 +86,7 @@ class Franka(Robot):
             if usd_path:
                 add_reference_to_stage(usd_path=usd_path, prim_path=prim_path)
             else:
-                assets_root_path = get_assets_root_path()
-                if assets_root_path is None:
-                    carb.log_error("Could not find Isaac Sim assets folder")
-                usd_path = assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd"
+                usd_path = _resolve_default_franka_usd_path()
                 add_reference_to_stage(usd_path=usd_path, prim_path=prim_path)
             if self._end_effector_prim_name is None:
                 self._end_effector_prim_path = prim_path + "/panda_rightfinger"
