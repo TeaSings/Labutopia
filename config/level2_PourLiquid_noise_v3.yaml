@@ -1,0 +1,13 @@
+# V3: v2 was too easy (~68% on 19 episodes), while v1 was too hard (0%).
+# Move between them by moderately widening pour target XY noise and slightly
+# increasing pour orientation noise.
+
+defaults:
+  - level2_PourLiquid_noise_v2
+  - _self_
+
+name: Level2_PourLiquid_noise_v3
+
+noise:
+  pour_target_position_xy_noise: [-0.105, 0.105]
+  pour_end_effector_euler_deg: [-10.0, 10.0]
