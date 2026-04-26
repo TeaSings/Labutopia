@@ -1,0 +1,20 @@
+defaults:
+  - level2_PourLiquid
+  - _self_
+
+name: Level2_PourLiquid_noise_v1
+
+noise:
+  enabled: true
+  noise_scale: 1.0
+  failure_bias_ratio: 0.0
+  noise_distribution: uniform
+  pick_target_position_xy_noise: [-0.008, 0.008]
+  pick_target_position_z_noise: [-0.004, 0.006]
+  pour_target_position_xy_noise: [-0.160, 0.160]
+  pour_target_position_z_noise: [-0.012, 0.012]
+  pick_after_offset_z: [-0.012, 0.012]
+  gripper_distance: [-0.0015, 0.0025]
+  pour_speed: [-0.35, 0.15]
+  pick_end_effector_euler_deg: [-4.0, 4.0]
+  pour_end_effector_euler_deg: [-8.0, 8.0]
