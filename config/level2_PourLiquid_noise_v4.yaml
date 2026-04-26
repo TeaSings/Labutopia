@@ -1,0 +1,12 @@
+# V4: v3 landed near the high edge of the target range (39% on 100 episodes).
+# Only widen pour XY target noise slightly; keep orientation unchanged to avoid
+# adding unrelated return-rotation failures.
+
+defaults:
+  - level2_PourLiquid_noise_v3
+  - _self_
+
+name: Level2_PourLiquid_noise_v4
+
+noise:
+  pour_target_position_xy_noise: [-0.115, 0.115]
