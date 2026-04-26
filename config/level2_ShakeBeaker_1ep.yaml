@@ -1,0 +1,6 @@
+defaults:
+  - level2_ShakeBeaker
+  - _self_
+
+name: Level2_ShakeBeaker_1ep
+max_episodes: 1
