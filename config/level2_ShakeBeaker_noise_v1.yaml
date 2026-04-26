@@ -1,0 +1,22 @@
+# V1: reuse the frozen Level1 shake noise profile. Level2_ShakeBeaker now uses
+# the same ShakeTaskController and clean parameters, so this should land near
+# the target 20%-40% range without controller changes.
+
+defaults:
+  - level2_ShakeBeaker
+  - _self_
+
+name: Level2_ShakeBeaker_noise_v1
+
+noise:
+  enabled: true
+  noise_scale: 1.0
+  failure_bias_ratio: 0.9
+  noise_distribution: "edge_bias"
+  pick_gripper_distance: [0.0, 0.005]
+  pick_end_effector_euler_deg: [-8.0, 8.0]
+  shake_distance: [-0.04, -0.01]
+  shake_end_effector_euler_deg: [-14.0, 14.0]
+  shake_initial_position_offset_x: [-0.015, 0.015]
+  shake_initial_position_offset_y: [-0.04, 0.04]
+  shake_initial_position_offset_z: [-0.03, 0.03]
