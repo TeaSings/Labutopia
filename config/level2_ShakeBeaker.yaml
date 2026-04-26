@@ -1,12 +1,12 @@
 name: Level2_ShakeBeaker
 
 task_type: "shake"
-controller_type: "shakebeaker"
+controller_type: "shake"
 
 mode: "collect"
 
 usd_path: "assets/chemistry_lab/lab_003/lab_003.usd"
-obj_path: "/World/beaker_2"  
+obj_path: "/World/beaker_2"
 sub_obj_path: "/World/beaker_2/mesh"
 
 
@@ -25,7 +25,8 @@ infer:
   max_retries: 3
 
 task:
-  max_steps: 1000
+  camera_warmup_frames: 45
+  max_steps: 3000
   obj_paths:
     - path: "/World/beaker_2"
       position_range:
@@ -38,7 +39,7 @@ cameras:
     name: "camera_1"
     translation: [2, 0, 2]
     resolution: [256, 256]
-    focal_length: 5
+    focal_length: 4
     orientation: [0.61237, 0.35355, 0.35355, 0.61237]
     image_type: "rgb"
 
@@ -46,8 +47,13 @@ cameras:
     name: "camera_2"
     translation: [0.1, 0, 2.5]
     resolution: [256, 256]
-    focal_length: 5
+    focal_length: 4
     orientation: [0.70711, 0, 0, -0.70711]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [256, 256]
     image_type: "rgb"
 
 robot:
@@ -56,7 +62,32 @@ robot:
 
 collector:
   type: "default"
-  compression: gzip  
+  compression: gzip
+  save_frames: -1
+
+shake:
+  pick:
+    events_dt: [0.003, 0.0015, 0.004, 0.01, 0.02, 0.003, 0.02]
+    position_threshold: 0.005
+    object_name: "beaker"
+    gripper_distance: 0.02
+    end_effector_euler_deg: [0.0, 90.0, 30.0]
+    pre_offset_x: 0.05
+    pre_offset_z: 0.05
+    after_offset_z: 0.15
+  motion:
+    events_dt: [0.02, 0.018, 0.014, 0.014, 0.014, 0.014, 0.014, 0.014, 0.04, 0.04]
+    end_effector_euler_deg: [0.0, 90.0, 10.0]
+    shake_distance: 0.07
+    initial_position_offset: [0.0, 0.0, 0.0]
+  success:
+    min_lift_height: 0.05
+    min_shake_span_xy: 0.045
+    required_shake_count: 4
+    hold_steps: 60
+    max_hold_xy_delta: 0.0125
+    post_hold_max_steps: 240
+    post_hold_settle_steps: 45
 
 hydra:
   run:
