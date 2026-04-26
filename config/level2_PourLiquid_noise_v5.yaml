@@ -1,0 +1,11 @@
+# V5: v4 still ran slightly high (41% on 100 episodes), with failures dominated
+# by pour target distance. Widen only pour XY noise and keep other noise fixed.
+
+defaults:
+  - level2_PourLiquid_noise_v4
+  - _self_
+
+name: Level2_PourLiquid_noise_v5
+
+noise:
+  pour_target_position_xy_noise: [-0.130, 0.130]
