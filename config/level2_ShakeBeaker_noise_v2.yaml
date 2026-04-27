@@ -1,0 +1,18 @@
+# V2: v1 was still too easy (54/100). Failures were split between low lift and
+# low shake count, so strengthen those same noise channels without changing the
+# controller or success logic.
+
+defaults:
+  - level2_ShakeBeaker_noise_v1
+  - _self_
+
+name: Level2_ShakeBeaker_noise_v2
+
+noise:
+  failure_bias_ratio: 1.0
+  pick_gripper_distance: [0.001, 0.007]
+  pick_end_effector_euler_deg: [-10.0, 10.0]
+  shake_distance: [-0.055, -0.015]
+  shake_end_effector_euler_deg: [-16.0, 16.0]
+  shake_initial_position_offset_y: [-0.050, 0.050]
+  shake_initial_position_offset_z: [-0.035, 0.035]
