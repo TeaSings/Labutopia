@@ -1,0 +1,6 @@
+defaults:
+  - level2_StirGlassrod
+  - _self_
+
+name: Level2_StirGlassrod_1ep
+max_episodes: 1
